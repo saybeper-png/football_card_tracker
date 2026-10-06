@@ -21,6 +21,13 @@ flutter build web --release
 Set-Content -Path "build\web\_redirects" -Value "/*    /index.html   200" -Encoding UTF8
 Compress-Archive -Path "build\web\*" -DestinationPath "$HOME\Desktop\football_app.zip" -Force
 
+Замените ссылку на вашу скопированную из Шага 1 и выполните:
+PowerShell
+
+git remote remove origin 2>$null
+git remote add origin https://github.com/saybeper-png/football_card_tracker.git
+git push -u origin main
+
 
 
 код: 1. проверить на ошибки 2. оптимизировать 3.проверить зависимости 4. переписать код если это обходимо под новые требования и выхода новых версий стороннитх приложений 
@@ -44,3 +51,10 @@ Compress-Archive -Path "build\web\*" -DestinationPath "$HOME\Desktop\football_ap
 
 
 28e430d7-2f57-44f1-aff8-202d8ad9f50a   AP ID netfly
+
+Достаточно выполнить всего 3 короткие команды в терминале:
+PowerShell
+
+git add .
+git commit -m "Кратко опишите, что изменили"
+git push origin main

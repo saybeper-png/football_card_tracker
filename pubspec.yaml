@@ -1,0 +1,32 @@
+﻿name: football_card_tracker
+description: "Gamified mobile tracker and FUT-style player card for young athletes"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.8.0
+  share_plus: ^13.3.1
+  path_provider: ^2.1.5
+  permission_handler: ^13.0.2
+  image_gallery_saver_plus: ^5.1.1
+  flutter_local_notifications: ^22.3.1
+  timezone: ^0.11.1
+  url_launcher: ^6.3.3
+  youtube_player_iframe: ^6.0.2
+  http: ^1.6.0
+  video_player: ^2.9.2
+  image_picker: ^1.2.4
+  cupertino_icons: ^2.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

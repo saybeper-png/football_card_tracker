@@ -1,0 +1,46 @@
+https://bdmvnaeawsfzurvdzaml.supabase.co
+
+https://loquacious-dusk-dc4b54.netlify.app
+
+sb_publishable_SRdAWMsl-_uohVydKx6rbw_8Ng_uV6T
+e843a897-bc2f-4089-97df-f7320c3fe8f1
+cd "$HOME\Downloads\football_card_tracker"
+flutter run -d chrome
+Stop-Process -Name "dart" -Force -ErrorAction SilentlyContinue (Принудительно закройте фоновый процесс)
+flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8090 --release {создание сборки для телефона}
+Get-NetTCPConnection -LocalPort 8090 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+Stop-Process -Name "dart" -Force -ErrorAction SilentlyContinue
+Stop-Process -Id (Get-NetTCPConnection -LocalPort 8090 -ErrorAction SilentlyContinue).OwningProcess -Force -ErrorAction SilentlyContinue; flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8090 --release
+
+
+Обновление на Netlify для работы на телефоне:
+
+Выполните команду сборки:
+
+flutter build web --release
+Set-Content -Path "build\web\_redirects" -Value "/*    /index.html   200" -Encoding UTF8
+Compress-Archive -Path "build\web\*" -DestinationPath "$HOME\Desktop\football_app.zip" -Force
+
+
+
+код: 1. проверить на ошибки 2. оптимизировать 3.проверить зависимости 4. переписать код если это обходимо под новые требования и выхода новых версий стороннитх приложений 
+
+
+Техническое решение для футбола
+
+Если нужна полноценная статистика и профили игроков, лучшая связка:
+
+    WordPress + плагин SportsPress: специализированный бесплатный движок для футбола. Он «из коробки» умеет генерировать турнирные таблицы, карточки матчей со схемами расстановки, профили игроков со статистикой (голы, минуты, ЖК/КК) и страницы соперников.
+
+    Tilda / Webflow: если подробная статистика ведется на внешних платформах (на сайте городской федерации, в Leon-Лиге или РФС-Турнирах), а сайт нужен только для презентации, набора детей и публикации фотоотчетов.
+
+
+
+Полезные команды для проверки версий
+
+    flutter pub outdated — покажет текущую таблицу зависимостей: какая версия установлена сейчас, какая последняя совместимая и какая самая новая в реестре pub.dev.
+
+    flutter pub upgrade — автоматически подтянет самые свежие совместимые минорные обновления для всех библиотек в проекте.
+
+
+28e430d7-2f57-44f1-aff8-202d8ad9f50a   AP ID netfly

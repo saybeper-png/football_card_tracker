@@ -1,4 +1,5 @@
-﻿// ignore_for_file: prefer_const_constructors
+import 'tournament_standings_widget.dart';
+// ignore_for_file: prefer_const_constructors
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/player_card_hub_model.dart';
@@ -384,7 +385,22 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
             player: player,
             onSkillUnlocked: () => setState(() => _loadPlayer()),
           ),
-          DynamicBlockRenderer(blocks: _dynamicBlocks),
+          SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const TournamentStandingsWidget(
+                  tournamentId: 'a0000000-0000-0000-0000-000000000001',
+                  title: 'Первенство U-10 • Золотая Лига',
+                  highlightTeamId: 'b0000000-0000-0000-0000-000000000001',
+                ),
+                const SizedBox(height: 16),
+                DynamicBlockRenderer(blocks: _dynamicBlocks),
+              ],
+            ),
+          ),
           RewardStoreScreen(
             playerId: player.playerId,
             initialXp: player.cardStats.totalXp,

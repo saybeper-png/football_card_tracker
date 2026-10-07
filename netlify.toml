@@ -1,8 +1,8 @@
 [build]
-publish = "build/web"
-command = "git clone https://github.com/flutter/flutter.git --depth 1 -b stable _flutter && ./_flutter/bin/flutter build web --release --no-tree-shake-icons"
+  command = "if [ ! -d _flutter/bin ]; then rm -rf _flutter && git clone https://github.com/flutter/flutter.git --depth 1 -b stable _flutter; fi && ./_flutter/bin/flutter build web --release --no-tree-shake-icons"
+  publish = "build/web"
 
 [[redirects]]
-from = "/*"
-to = "/index.html"
-status = 200
+  from = "/*"
+  to = "/index.html"
+  status = 200

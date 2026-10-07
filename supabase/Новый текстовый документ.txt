@@ -5,13 +5,17 @@ https://loquacious-dusk-dc4b54.netlify.app
 sb_publishable_SRdAWMsl-_uohVydKx6rbw_8Ng_uV6T
 e843a897-bc2f-4089-97df-f7320c3fe8f1
 cd "$HOME\Downloads\football_card_tracker"
-flutter run -d chrome
+flutter run -d chrome --release
 Stop-Process -Name "dart" -Force -ErrorAction SilentlyContinue (Принудительно закройте фоновый процесс)
 flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8090 --release {создание сборки для телефона}
 Get-NetTCPConnection -LocalPort 8090 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
 Stop-Process -Name "dart" -Force -ErrorAction SilentlyContinue
 Stop-Process -Id (Get-NetTCPConnection -LocalPort 8090 -ErrorAction SilentlyContinue).OwningProcess -Force -ErrorAction SilentlyContinue; flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8090 --release
 
+
+# Освобождаем порт при необходимости и запускаем сервер
+Stop-Process -Name dart -Force -ErrorAction SilentlyContinue
+flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080
 
 Обновление на Netlify для работы на телефоне:
 

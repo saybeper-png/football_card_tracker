@@ -20,11 +20,17 @@ class AcademyHubScreen extends StatefulWidget {
 }
 
 class _AcademyHubScreenState extends State<AcademyHubScreen> {
-  int _selectedTab = 0; // 0: Таблица, 1: Календарь, 2: Команды
+  // 0: Таблица, 1: Календарь, 2: Тактика, 3: Состав & Команды
+  int _selectedTab = 0;
   int _refreshCounter = 0;
+  String _sportType = 'football'; // 'football' (7x7) или 'futsal' (5x5)
   String? _activeTeamId;
   String? _activeTeamName;
-  String _selectedRoleFilter = 'ALL'; // ALL, GK, DEF, MID, ATT
+
+  // Тактические схемы
+  String _selectedFootballFormation = '2-3-1';
+  String _selectedFutsalFormation = '1-2-1 (Ромб)';
+  String _selectedRoleFilter = 'ALL';
 
   @override
   void initState() {
@@ -40,9 +46,11 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
         bottom: false,
         child: Column(
           children: [
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
+            _buildSportSelector(),
+            const SizedBox(height: 10),
             _buildTabSelector(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
@@ -55,11 +63,78 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
+  // Переключатель вида спорта (Футбол 7х7 vs Зал 5х5)
+  Widget _buildSportSelector() {
+    final isFutsal = _sportType == 'futsal';
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141724),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _sportType = 'football'),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                decoration: BoxDecoration(
+                  color: !isFutsal ? const Color(0xFF2E7D32) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.sports_soccer, size: 14, color: Colors.white),
+                    SizedBox(width: 6),
+                    Text(
+                      'Футбол 7х7 (Газон)',
+                      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _sportType = 'futsal'),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                decoration: BoxDecoration(
+                  color: isFutsal ? const Color(0xFFD84315) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.stadium, size: 14, color: Colors.white),
+                    SizedBox(width: 6),
+                    Text(
+                      'Мини-футбол 5х5 (Зал)',
+                      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTabSelector() {
     final tabs = [
       {'title': 'Таблица', 'icon': Icons.emoji_events_outlined, 'selectedIcon': Icons.emoji_events},
       {'title': 'Календарь', 'icon': Icons.calendar_month_outlined, 'selectedIcon': Icons.calendar_month},
-      {'title': 'Команды', 'icon': Icons.groups_outlined, 'selectedIcon': Icons.groups},
+      {'title': 'Тактика', 'icon': Icons.dashboard_outlined, 'selectedIcon': Icons.dashboard},
+      {'title': 'Состав', 'icon': Icons.groups_outlined, 'selectedIcon': Icons.groups},
     ];
 
     return Container(
@@ -79,7 +154,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
               onTap: () => setState(() => _selectedTab = index),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.symmetric(vertical: 9),
                 decoration: BoxDecoration(
                   color: isSelected ? const Color(0xFFFFB800) : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
@@ -87,8 +162,8 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                       ? [
                           BoxShadow(
                             color: const Color(0xFFFFB800).withValues(alpha: 0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           )
                         ]
                       : [],
@@ -98,16 +173,16 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                   children: [
                     Icon(
                       isSelected ? (tab['selectedIcon'] as IconData) : (tab['icon'] as IconData),
-                      size: 16,
+                      size: 15,
                       color: isSelected ? Colors.black : Colors.white60,
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 5),
                     Text(
                       tab['title'] as String,
                       style: TextStyle(
                         color: isSelected ? Colors.black : Colors.white70,
                         fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                        fontSize: 13,
+                        fontSize: 12,
                       ),
                     ),
                   ],
@@ -127,25 +202,31 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
       case 1:
         return _buildCalendarTab();
       case 2:
+        return _buildTacticsTab();
+      case 3:
         return _buildRosterAndTeamsTab();
       default:
         return const SizedBox.shrink();
     }
   }
 
-  // 1. ВКЛАДКА ТАБЛИЦА
+  // 1. ТАБЛИЦА
   Widget _buildStandingsTab() {
+    final title = _sportType == 'futsal'
+        ? 'Первенство по мини-футболу (Зал U-10)'
+        : 'Первенство U-10 • Золотая Лига';
+
     return SingleChildScrollView(
-      key: ValueKey('tab_standings_$_refreshCounter'),
+      key: ValueKey('tab_standings_${_refreshCounter}_$_sportType'),
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TournamentStandingsWidget(
-            key: ValueKey('widget_standings_$_refreshCounter'),
+            key: ValueKey('widget_standings_${_refreshCounter}_$_sportType'),
             tournamentId: widget.tournamentId,
-            title: 'Первенство U-10 • Золотая Лига',
+            title: title,
             highlightTeamId: widget.myTeamId,
           ),
           const SizedBox(height: 16),
@@ -156,10 +237,10 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // 2. ВКЛАДКА КАЛЕНДАРЬ
+  // 2. КАЛЕНДАРЬ
   Widget _buildCalendarTab() {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      key: ValueKey('tab_calendar_$_refreshCounter'),
+      key: ValueKey('tab_calendar_${_refreshCounter}_$_sportType'),
       future: Supabase.instance.client
           .from('matches')
           .select('*, home:home_team_id(name, short_name), away:away_team_id(name, short_name)')
@@ -188,6 +269,8 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
             final homeTeam = (m['home'] as Map<String, dynamic>?)?['name'] ?? 'Хозяева';
             final awayTeam = (m['away'] as Map<String, dynamic>?)?['name'] ?? 'Гости';
             final scoreText = isFinished ? '${m['home_score']} : ${m['away_score']}' : 'VS';
+            final homeFouls = m['home_fouls'] ?? 0;
+            final awayFouls = m['away_fouls'] ?? 0;
 
             return Container(
               padding: const EdgeInsets.all(14),
@@ -203,10 +286,14 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.stadium_outlined, size: 14, color: Colors.white38),
+                          Icon(
+                            _sportType == 'futsal' ? Icons.sports_volleyball : Icons.stadium_outlined,
+                            size: 14,
+                            color: Colors.white38,
+                          ),
                           const SizedBox(width: 4),
                           Text(
-                            m['venue'] ?? 'Основной стадион',
+                            m['venue'] ?? (_sportType == 'futsal' ? 'Манеж / СК Олимп' : 'Основной стадион'),
                             style: const TextStyle(color: Colors.white38, fontSize: 11),
                           ),
                         ],
@@ -287,6 +374,17 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                       ),
                     ],
                   ),
+                  if (_sportType == 'futsal') ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('Фолы: $homeFouls', style: TextStyle(color: homeFouls >= 5 ? Colors.redAccent : Colors.white38, fontSize: 11)),
+                        const SizedBox(width: 14),
+                        Text('Фолы: $awayFouls', style: TextStyle(color: awayFouls >= 5 ? Colors.redAccent : Colors.white38, fontSize: 11)),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             );
@@ -296,151 +394,261 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  void _openScoreEditDialog(Map<String, dynamic> match, String homeTeam, String awayTeam) {
-    final homeController = TextEditingController(text: match['home_score']?.toString() ?? '0');
-    final awayController = TextEditingController(text: match['away_score']?.toString() ?? '0');
-    bool isFinished = match['status'] == 'finished' || match['status'] == null;
+  // 3. ТАКТИЧЕСКАЯ ДОСКА (PITCH VIEW)
+  Widget _buildTacticsTab() {
+    final isFutsal = _sportType == 'futsal';
+    final formations = isFutsal ? ['1-2-1 (Ромб)', '2-2 (Квадрат)', '4-0 (В линию)'] : ['2-3-1', '3-2-1', '2-2-2'];
+    final currentFormation = isFutsal ? _selectedFutsalFormation : _selectedFootballFormation;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF141724),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.sports_score, color: Color(0xFFFFB800)),
-              SizedBox(width: 8),
-              Text('Результат матча', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      key: ValueKey('tactics_roster_${_activeTeamId}_$_refreshCounter'),
+      future: Supabase.instance.client
+          .from('player_profiles')
+          .select('*, users(first_name, last_name)')
+          .eq('team_id', _activeTeamId ?? widget.myTeamId)
+          .order('jersey_number', ascending: true),
+      builder: (context, snapshot) {
+        final players = snapshot.data ?? [];
+
+        return Column(
+          children: [
+            // Панель выбора схемы
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
                 children: [
+                  const Text('СХЕМА:', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Column(
-                      children: [
-                        Text(homeTeam, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: homeController,
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Color(0xFFFFB800), fontSize: 24, fontWeight: FontWeight.w900),
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: Colors.black38,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10),
-                    child: Text(':', style: TextStyle(color: Colors.white38, fontSize: 26, fontWeight: FontWeight.bold)),
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Text(awayTeam, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: awayController,
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Color(0xFFFFB800), fontSize: 24, fontWeight: FontWeight.w900),
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: Colors.black38,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                          ),
-                        ),
-                      ],
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: formations.map((form) {
+                          final isSel = form == currentFormation;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text(form),
+                              selected: isSel,
+                              selectedColor: isFutsal ? const Color(0xFFD84315) : const Color(0xFF2E7D32),
+                              backgroundColor: const Color(0xFF141724),
+                              labelStyle: TextStyle(
+                                color: Colors.white,
+                                fontWeight: isSel ? FontWeight.w900 : FontWeight.w600,
+                                fontSize: 11,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                side: BorderSide(color: isSel ? Colors.white30 : Colors.white10),
+                              ),
+                              onSelected: (val) {
+                                if (val) {
+                                  setState(() {
+                                    if (isFutsal) {
+                                      _selectedFutsalFormation = form;
+                                    } else {
+                                      _selectedFootballFormation = form;
+                                    }
+                                  });
+                                }
+                              },
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                activeThumbColor: const Color(0xFFFFB800),
-                title: const Text('Матч завершен', style: TextStyle(color: Colors.white, fontSize: 13)),
-                value: isFinished,
-                onChanged: (val) => setDialogState(() => isFinished = val),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFFB800),
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            // Интерактивное тактическое поле
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Stack(
+                        children: [
+                          // Отрисовка поля (Газон или Паркет)
+                          CustomPaint(
+                            size: Size(constraints.maxWidth, constraints.maxHeight),
+                            painter: isFutsal ? FutsalPitchPainter() : FootballPitchPainter(),
+                          ),
+                          // Размещение игроков по координатам схемы
+                          ..._buildPitchPlayerNodes(
+                            constraints: constraints,
+                            isFutsal: isFutsal,
+                            formation: currentFormation,
+                            players: players,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
               ),
-              onPressed: () {
-                final hScore = int.tryParse(homeController.text.trim()) ?? 0;
-                final aScore = int.tryParse(awayController.text.trim()) ?? 0;
-                final newStatus = isFinished ? 'finished' : 'scheduled';
-                final matchId = match['id'].toString();
-
-                Navigator.of(ctx).pop();
-                _updateMatchScore(matchId: matchId, homeScore: hScore, awayScore: aScore, status: newStatus);
-              },
-              child: const Text('Сохранить', style: TextStyle(fontWeight: FontWeight.w900)),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Future<void> _updateMatchScore({
-    required String matchId,
-    required int homeScore,
-    required int awayScore,
-    required String status,
-  }) async {
-    try {
-      await Supabase.instance.client.from('matches').update({
-        'home_score': homeScore,
-        'away_score': awayScore,
-        'status': status,
-      }).eq('id', matchId);
+  // Расчет координат игроков на поле
+  List<Widget> _buildPitchPlayerNodes({
+    required BoxConstraints constraints,
+    required bool isFutsal,
+    required String formation,
+    required List<Map<String, dynamic>> players,
+  }) {
+    List<Map<String, dynamic>> slots = [];
 
-      if (!mounted) return;
-      setState(() => _refreshCounter++);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Результат матча обновлен и таблица пересчитана!'),
-          backgroundColor: Color(0xFF141724),
-          behavior: SnackBarBehavior.floating,
+    if (isFutsal) {
+      if (formation == '1-2-1 (Ромб)') {
+        slots = [
+          {'pos': Offset(0.50, 0.90), 'role': 'ВРТ'},
+          {'pos': Offset(0.50, 0.68), 'role': 'ФИКС'},
+          {'pos': Offset(0.20, 0.46), 'role': 'Л.АЛА'},
+          {'pos': Offset(0.80, 0.46), 'role': 'П.АЛА'},
+          {'pos': Offset(0.50, 0.18), 'role': 'СТОЛБ'},
+        ];
+      } else if (formation == '2-2 (Квадрат)') {
+        slots = [
+          {'pos': Offset(0.50, 0.90), 'role': 'ВРТ'},
+          {'pos': Offset(0.28, 0.65), 'role': 'Л.ЗАЩ'},
+          {'pos': Offset(0.72, 0.65), 'role': 'П.ЗАЩ'},
+          {'pos': Offset(0.28, 0.28), 'role': 'Л.НАП'},
+          {'pos': Offset(0.72, 0.28), 'role': 'П.НАП'},
+        ];
+      } else {
+        slots = [
+          {'pos': Offset(0.50, 0.90), 'role': 'ВРТ'},
+          {'pos': Offset(0.16, 0.52), 'role': 'АЛА'},
+          {'pos': Offset(0.38, 0.58), 'role': 'ФИКС'},
+          {'pos': Offset(0.62, 0.58), 'role': 'ФИКС'},
+          {'pos': Offset(0.84, 0.52), 'role': 'АЛА'},
+        ];
+      }
+    } else {
+      if (formation == '2-3-1') {
+        slots = [
+          {'pos': Offset(0.50, 0.92), 'role': 'GK'},
+          {'pos': Offset(0.28, 0.73), 'role': 'LB'},
+          {'pos': Offset(0.72, 0.73), 'role': 'RB'},
+          {'pos': Offset(0.18, 0.48), 'role': 'LM'},
+          {'pos': Offset(0.50, 0.48), 'role': 'CM'},
+          {'pos': Offset(0.82, 0.48), 'role': 'RM'},
+          {'pos': Offset(0.50, 0.20), 'role': 'ST'},
+        ];
+      } else if (formation == '3-2-1') {
+        slots = [
+          {'pos': Offset(0.50, 0.92), 'role': 'GK'},
+          {'pos': Offset(0.20, 0.73), 'role': 'LB'},
+          {'pos': Offset(0.50, 0.75), 'role': 'CB'},
+          {'pos': Offset(0.80, 0.73), 'role': 'RB'},
+          {'pos': Offset(0.35, 0.48), 'role': 'CM'},
+          {'pos': Offset(0.65, 0.48), 'role': 'CM'},
+          {'pos': Offset(0.50, 0.20), 'role': 'ST'},
+        ];
+      } else {
+        slots = [
+          {'pos': Offset(0.50, 0.92), 'role': 'GK'},
+          {'pos': Offset(0.30, 0.72), 'role': 'LB'},
+          {'pos': Offset(0.70, 0.72), 'role': 'RB'},
+          {'pos': Offset(0.30, 0.48), 'role': 'LM'},
+          {'pos': Offset(0.70, 0.48), 'role': 'RM'},
+          {'pos': Offset(0.30, 0.22), 'role': 'ST'},
+          {'pos': Offset(0.70, 0.22), 'role': 'ST'},
+        ];
+      }
+    }
+
+    final double nodeSize = 46.0;
+    return List.generate(slots.length, (i) {
+      final slot = slots[i];
+      final Offset offset = slot['pos'] as Offset;
+      final String role = slot['role'] as String;
+      final player = i < players.length ? players[i] : null;
+      final user = player?['users'] as Map<String, dynamic>?;
+      final name = player != null
+          ? '${user?['last_name'] ?? player['last_name'] ?? 'Игрок'}'
+          : role;
+      final number = player?['jersey_number'] ?? (i + 1);
+
+      final double x = offset.dx * constraints.maxWidth - (nodeSize / 2);
+      final double y = offset.dy * constraints.maxHeight - (nodeSize / 2);
+
+      return Positioned(
+        left: x,
+        top: y,
+        child: GestureDetector(
+          onTap: () {
+            if (player != null) {
+              final fullName = '${user?['first_name'] ?? player['first_name'] ?? ''} ${user?['last_name'] ?? player['last_name'] ?? ''}'.trim();
+              _showPlayerDetailsDialog(player, fullName);
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: nodeSize,
+                height: nodeSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isFutsal ? const Color(0xFFD84315) : const Color(0xFF1E88E5),
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    )
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '#$number',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.75),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
         ),
       );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка обновления: $e'), backgroundColor: Colors.redAccent),
-      );
-    }
+    });
   }
 
-  // 3. ВКЛАДКА КОМАНДЫ И СОСТАВЫ
+  // 4. СОСТАВ И КОМАНДЫ
   Widget _buildRosterAndTeamsTab() {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      key: ValueKey('teams_list_$_refreshCounter'),
+      key: ValueKey('teams_list_${_refreshCounter}_$_sportType'),
       future: Supabase.instance.client.from('teams').select('id, name, short_name').order('name'),
       builder: (context, teamSnapshot) {
         if (teamSnapshot.connectionState == ConnectionState.waiting) {
@@ -549,10 +757,16 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // Фильтрация игроков по амплуа
   bool _matchesRole(String position, String filter) {
     if (filter == 'ALL') return true;
     final pos = position.toUpperCase();
+    if (_sportType == 'futsal') {
+      if (filter == 'GK') return pos.contains('ВРТ') || pos == 'GK';
+      if (filter == 'DEF') return pos.contains('ФИКС') || pos.contains('ЗАЩ');
+      if (filter == 'MID') return pos.contains('АЛА');
+      if (filter == 'ATT') return pos.contains('СТОЛБ') || pos.contains('НАП');
+      return true;
+    }
     if (filter == 'GK') return pos == 'GK';
     if (filter == 'DEF') return ['CB', 'LB', 'RB', 'LWB', 'RWB'].contains(pos);
     if (filter == 'MID') return ['CM', 'CDM', 'CAM', 'LM', 'RM'].contains(pos);
@@ -563,10 +777,10 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
   Widget _buildRoleFilterChips() {
     final filters = [
       {'key': 'ALL', 'label': 'Все'},
-      {'key': 'GK', 'label': 'Вратари'},
-      {'key': 'DEF', 'label': 'Защита'},
-      {'key': 'MID', 'label': 'Полузащита'},
-      {'key': 'ATT', 'label': 'Атака'},
+      {'key': 'GK', 'label': _sportType == 'futsal' ? 'Вратари' : 'Вратари (GK)'},
+      {'key': 'DEF', 'label': _sportType == 'futsal' ? 'Фиксо' : 'Защита'},
+      {'key': 'MID', 'label': _sportType == 'futsal' ? 'Ала' : 'Полузащита'},
+      {'key': 'ATT', 'label': _sportType == 'futsal' ? 'Столбы' : 'Атака'},
     ];
 
     return SingleChildScrollView(
@@ -628,7 +842,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           children: [
-            // Шапка команды + кнопка добавления игрока
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -678,8 +891,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
               ),
             ),
             const SizedBox(height: 10),
-
-            // Фильтры по амплуа
             _buildRoleFilterChips(),
             const SizedBox(height: 12),
 
@@ -714,7 +925,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                 final user = p['users'] as Map<String, dynamic>?;
                 final fullName = '${user?['first_name'] ?? p['first_name'] ?? 'Игрок'} ${user?['last_name'] ?? p['last_name'] ?? ''}'.trim();
                 final num = p['jersey_number'] ?? index + 1;
-                final pos = p['position'] ?? 'ST';
+                final pos = p['position'] ?? (_sportType == 'futsal' ? 'АЛА' : 'ST');
                 final ovr = p['ovr'] ?? 75;
                 final avatarUrl = p['avatar_url']?.toString();
 
@@ -774,7 +985,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // Виджет аватара (фото из сети или стилизованный бейдж с номером)
   Widget _buildPlayerAvatar({String? avatarUrl, required int number, double size = 36}) {
     if (avatarUrl != null && avatarUrl.trim().startsWith('http')) {
       return ClipRRect(
@@ -808,7 +1018,209 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // СОЗДАНИЕ КОМАНДЫ
+  // ДИАЛОГИ И МЕТОДЫ УПРАВЛЕНИЯ
+  void _openScoreEditDialog(Map<String, dynamic> match, String homeTeam, String awayTeam) {
+    final homeController = TextEditingController(text: match['home_score']?.toString() ?? '0');
+    final awayController = TextEditingController(text: match['away_score']?.toString() ?? '0');
+    final homeFoulsController = TextEditingController(text: match['home_fouls']?.toString() ?? '0');
+    final awayFoulsController = TextEditingController(text: match['away_fouls']?.toString() ?? '0');
+    bool isFinished = match['status'] == 'finished' || match['status'] == null;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF141724),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.sports_score, color: Color(0xFFFFB800)),
+              SizedBox(width: 8),
+              Text('Результат матча', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Text(homeTeam, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: homeController,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Color(0xFFFFB800), fontSize: 24, fontWeight: FontWeight.w900),
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: Colors.black38,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10),
+                      child: Text(':', style: TextStyle(color: Colors.white38, fontSize: 26, fontWeight: FontWeight.bold)),
+                    ),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Text(awayTeam, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: awayController,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Color(0xFFFFB800), fontSize: 24, fontWeight: FontWeight.w900),
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: Colors.black38,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (_sportType == 'futsal') ...[
+                  const SizedBox(height: 14),
+                  const Text('Командные фолы (Футзал):', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: homeFoulsController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, fontSize: 16),
+                          decoration: InputDecoration(
+                            labelText: 'Фолы $homeTeam',
+                            labelStyle: const TextStyle(color: Colors.white38, fontSize: 10),
+                            filled: true,
+                            fillColor: Colors.black26,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: awayFoulsController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, fontSize: 16),
+                          decoration: InputDecoration(
+                            labelText: 'Фолы $awayTeam',
+                            labelStyle: const TextStyle(color: Colors.white38, fontSize: 10),
+                            filled: true,
+                            fillColor: Colors.black26,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 14),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: const Color(0xFFFFB800),
+                  title: const Text('Матч завершен', style: TextStyle(color: Colors.white, fontSize: 13)),
+                  value: isFinished,
+                  onChanged: (val) => setDialogState(() => isFinished = val),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFB800),
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                final hScore = int.tryParse(homeController.text.trim()) ?? 0;
+                final aScore = int.tryParse(awayController.text.trim()) ?? 0;
+                final hFouls = int.tryParse(homeFoulsController.text.trim()) ?? 0;
+                final aFouls = int.tryParse(awayFoulsController.text.trim()) ?? 0;
+                final newStatus = isFinished ? 'finished' : 'scheduled';
+                final matchId = match['id'].toString();
+
+                Navigator.of(ctx).pop();
+                _updateMatchScore(
+                  matchId: matchId,
+                  homeScore: hScore,
+                  awayScore: aScore,
+                  homeFouls: hFouls,
+                  awayFouls: aFouls,
+                  status: newStatus,
+                );
+              },
+              child: const Text('Сохранить', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _updateMatchScore({
+    required String matchId,
+    required int homeScore,
+    required int awayScore,
+    required int homeFouls,
+    required int awayFouls,
+    required String status,
+  }) async {
+    try {
+      final Map<String, dynamic> updateData = {
+        'home_score': homeScore,
+        'away_score': awayScore,
+        'status': status,
+      };
+      if (_sportType == 'futsal') {
+        updateData['home_fouls'] = homeFouls;
+        updateData['away_fouls'] = awayFouls;
+      }
+
+      await Supabase.instance.client.from('matches').update(updateData).eq('id', matchId);
+
+      if (!mounted) return;
+      setState(() => _refreshCounter++);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Результат матча обновлен и таблица пересчитана!'),
+          backgroundColor: Color(0xFF141724),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка обновления: $e'), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
+
   void _openCreateTeamDialog() {
     final nameController = TextEditingController();
     final shortNameController = TextEditingController();
@@ -932,16 +1344,19 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     }
   }
 
-  // СОЗДАНИЕ ИГРОКА С ФОТО / АВАТАРОМ
   void _openCreatePlayerDialog(String teamId) {
     final firstNameController = TextEditingController();
     final lastNameController = TextEditingController();
     final numberController = TextEditingController(text: '10');
     final ovrController = TextEditingController(text: '75');
     final avatarController = TextEditingController();
-    String selectedPos = 'ST';
+
+    final isFutsal = _sportType == 'futsal';
+    final positions = isFutsal
+        ? ['ВРТ', 'ФИКС', 'АЛА', 'СТОЛБ', '5-Й']
+        : ['GK', 'CB', 'LB', 'RB', 'CM', 'CDM', 'CAM', 'LW', 'RW', 'ST'];
+    String selectedPos = positions.first;
     String selectedFoot = 'Правая';
-    final positions = ['GK', 'CB', 'LB', 'RB', 'CM', 'CDM', 'CAM', 'LW', 'RW', 'ST'];
 
     final presetAvatars = [
       'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150',
@@ -1038,7 +1453,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                         dropdownColor: const Color(0xFF141724),
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'Позиция',
+                          labelText: 'Амплуа',
                           labelStyle: const TextStyle(color: Colors.white60),
                           filled: true,
                           fillColor: Colors.black26,
@@ -1080,7 +1495,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                   controller: avatarController,
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                   decoration: InputDecoration(
-                    labelText: 'URL фото / аватара',
+                    labelText: 'URL аватара',
                     labelStyle: const TextStyle(color: Colors.white60),
                     hintText: 'https://...',
                     hintStyle: const TextStyle(color: Colors.white24),
@@ -1090,7 +1505,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // Пресеты аватаров
                 Row(
                   children: [
                     const Text('Пресеты: ', style: TextStyle(color: Colors.white38, fontSize: 11)),
@@ -1190,7 +1604,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Игрок $firstName $lastName добавлен в команду!'),
+          content: Text('Игрок $firstName $lastName добавлен!'),
           backgroundColor: const Color(0xFF141724),
           behavior: SnackBarBehavior.floating,
         ),
@@ -1203,314 +1617,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     }
   }
 
-  // РЕДАКТИРОВАНИЕ ИГРОКА
-  void _openEditPlayerDialog(Map<String, dynamic> player) {
-    final user = player['users'] as Map<String, dynamic>?;
-    final firstNameController = TextEditingController(text: user?['first_name'] ?? player['first_name'] ?? '');
-    final lastNameController = TextEditingController(text: user?['last_name'] ?? player['last_name'] ?? '');
-    final numberController = TextEditingController(text: '${player['jersey_number'] ?? 10}');
-    final ovrController = TextEditingController(text: '${player['ovr'] ?? 75}');
-    final avatarController = TextEditingController(text: player['avatar_url']?.toString() ?? '');
-    String selectedPos = player['position']?.toString() ?? 'ST';
-    String selectedFoot = player['preferred_foot']?.toString() ?? 'Правая';
-    final positions = ['GK', 'CB', 'LB', 'RB', 'CM', 'CDM', 'CAM', 'LW', 'RW', 'ST'];
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF141724),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.edit, color: Color(0xFFFFB800)),
-              SizedBox(width: 8),
-              Text('Редактировать игрока', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: firstNameController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Имя',
-                    labelStyle: const TextStyle(color: Colors.white60),
-                    filled: true,
-                    fillColor: Colors.black26,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: lastNameController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Фамилия',
-                    labelStyle: const TextStyle(color: Colors.white60),
-                    filled: true,
-                    fillColor: Colors.black26,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: numberController,
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          labelText: 'Номер (#)',
-                          labelStyle: const TextStyle(color: Colors.white60),
-                          filled: true,
-                          fillColor: Colors.black26,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: ovrController,
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(color: Color(0xFFFFB800), fontWeight: FontWeight.bold),
-                        decoration: InputDecoration(
-                          labelText: 'OVR',
-                          labelStyle: const TextStyle(color: Colors.white60),
-                          filled: true,
-                          fillColor: Colors.black26,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: positions.contains(selectedPos) ? selectedPos : 'ST',
-                        dropdownColor: const Color(0xFF141724),
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          labelText: 'Позиция',
-                          labelStyle: const TextStyle(color: Colors.white60),
-                          filled: true,
-                          fillColor: Colors.black26,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                        ),
-                        items: positions.map((pos) => DropdownMenuItem(value: pos, child: Text(pos))).toList(),
-                        onChanged: (val) {
-                          if (val != null) setDialogState(() => selectedPos = val);
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: ['Правая', 'Левая', 'Обе'].contains(selectedFoot) ? selectedFoot : 'Правая',
-                        dropdownColor: const Color(0xFF141724),
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          labelText: 'Нога',
-                          labelStyle: const TextStyle(color: Colors.white60),
-                          filled: true,
-                          fillColor: Colors.black26,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'Правая', child: Text('Правая')),
-                          DropdownMenuItem(value: 'Левая', child: Text('Левая')),
-                          DropdownMenuItem(value: 'Обе', child: Text('Обе')),
-                        ],
-                        onChanged: (val) {
-                          if (val != null) setDialogState(() => selectedFoot = val);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: avatarController,
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
-                  decoration: InputDecoration(
-                    labelText: 'URL аватара',
-                    labelStyle: const TextStyle(color: Colors.white60),
-                    filled: true,
-                    fillColor: Colors.black26,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFFB800),
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () {
-                final playerId = player['id'].toString();
-                final fName = firstNameController.text.trim();
-                final lName = lastNameController.text.trim();
-                final num = int.tryParse(numberController.text.trim()) ?? 10;
-                final ovr = int.tryParse(ovrController.text.trim()) ?? 75;
-                final avatar = avatarController.text.trim();
-                final userId = player['user_id']?.toString();
-
-                Navigator.of(ctx).pop();
-                _updatePlayer(
-                  playerId: playerId,
-                  userId: userId,
-                  firstName: fName,
-                  lastName: lName,
-                  number: num,
-                  position: selectedPos,
-                  ovr: ovr,
-                  preferredFoot: selectedFoot,
-                  avatarUrl: avatar,
-                );
-              },
-              child: const Text('Сохранить', style: TextStyle(fontWeight: FontWeight.w900)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _updatePlayer({
-    required String playerId,
-    String? userId,
-    required String firstName,
-    required String lastName,
-    required int number,
-    required String position,
-    required int ovr,
-    required String preferredFoot,
-    required String avatarUrl,
-  }) async {
-    try {
-      final Map<String, dynamic> updateData = {
-        'jersey_number': number,
-        'position': position,
-        'ovr': ovr,
-        'preferred_foot': preferredFoot,
-        'first_name': firstName,
-        'last_name': lastName,
-        'avatar_url': avatarUrl,
-      };
-
-      await Supabase.instance.client.from('player_profiles').update(updateData).eq('id', playerId);
-
-      if (userId != null) {
-        try {
-          await Supabase.instance.client.from('users').update({
-            'first_name': firstName,
-            'last_name': lastName,
-          }).eq('id', userId);
-        } catch (_) {}
-      }
-
-      if (!mounted) return;
-      setState(() => _refreshCounter++);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Данные игрока успешно обновлены!'),
-          backgroundColor: Color(0xFF141724),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка обновления игрока: $e'), backgroundColor: Colors.redAccent),
-      );
-    }
-  }
-
-  // УДАЛЕНИЕ ИГРОКА
-  void _confirmDeletePlayer(String playerId, String fullName) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF141724),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: Colors.redAccent, width: 1),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
-            SizedBox(width: 8),
-            Text('Удаление игрока', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Text(
-          'Вы уверены, что хотите удалить «$fullName» из состава?',
-          style: const TextStyle(color: Colors.white70, fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _deletePlayer(playerId, fullName);
-            },
-            child: const Text('Удалить', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _deletePlayer(String playerId, String fullName) async {
-    try {
-      await Supabase.instance.client.from('player_profiles').delete().eq('id', playerId);
-
-      if (!mounted) return;
-      setState(() => _refreshCounter++);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Игрок «$fullName» удален из состава'),
-          backgroundColor: const Color(0xFF141724),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка удаления игрока: $e'), backgroundColor: Colors.redAccent),
-      );
-    }
-  }
-
-  // КАРТОЧКА ИГРОКА (FUT STYLE) С КНОПКАМИ ИЗМЕНИТЬ И УДАЛИТЬ
   void _showPlayerDetailsDialog(Map<String, dynamic> player, String fullName) {
     final num = player['jersey_number'] ?? 10;
     final pos = player['position'] ?? 'ST';
@@ -1518,7 +1624,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     final foot = player['preferred_foot'] ?? 'Правая';
     final teamName = _activeTeamName ?? 'Академия';
     final avatarUrl = player['avatar_url']?.toString();
-    final playerId = player['id'].toString();
 
     showDialog(
       context: context,
@@ -1532,7 +1637,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Верхняя часть карточки (Рейтинг, Аватар, Номер)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1542,27 +1646,15 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                   children: [
                     Text(
                       '$ovr',
-                      style: const TextStyle(
-                        color: Color(0xFFFFB800),
-                        fontSize: 34,
-                        fontWeight: FontWeight.w900,
-                        height: 1.0,
-                      ),
+                      style: const TextStyle(color: Color(0xFFFFB800), fontSize: 34, fontWeight: FontWeight.w900, height: 1.0),
                     ),
                     Text(
                       pos,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1,
-                      ),
+                      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900, letterSpacing: 1),
                     ),
                   ],
                 ),
-                // Центр: фото игрока
                 _buildPlayerAvatar(avatarUrl: avatarUrl, number: num, size: 64),
-                // Правая часть: номер
                 Container(
                   width: 44,
                   height: 44,
@@ -1574,18 +1666,8 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFFB800).withValues(alpha: 0.4),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      )
-                    ],
                   ),
-                  child: Text(
-                    '#$num',
-                    style: const TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.w900),
-                  ),
+                  child: Text('#$num', style: const TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.w900)),
                 ),
               ],
             ),
@@ -1593,18 +1675,10 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
             Text(
               fullName.toUpperCase(),
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.5,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 0.5),
             ),
             const SizedBox(height: 4),
-            Text(
-              teamName,
-              style: const TextStyle(color: Color(0xFFFFB800), fontSize: 13, fontWeight: FontWeight.w600),
-            ),
+            Text(teamName, style: const TextStyle(color: Color(0xFFFFB800), fontSize: 13, fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
             const Divider(color: Colors.white12, height: 1),
             const SizedBox(height: 14),
@@ -1622,58 +1696,15 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.black38,
-                borderRadius: BorderRadius.circular(12),
-              ),
+              decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(12)),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   _buildDetailRow('Нога', foot),
-                  _buildDetailRow('Форма', '9.4 ★'),
+                  _buildDetailRow('Дисциплина', _sportType == 'futsal' ? 'Футзал' : 'Футбол'),
                   _buildDetailRow('Статус', 'Основной'),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-
-            // Кнопки управления: Изменить и Удалить
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFFFB800),
-                      side: const BorderSide(color: Color(0xFFFFB800)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                    ),
-                    onPressed: () {
-                      Navigator.of(ctx).pop();
-                      _openEditPlayerDialog(player);
-                    },
-                    icon: const Icon(Icons.edit, size: 16),
-                    label: const Text('Изменить', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.redAccent,
-                      side: const BorderSide(color: Colors.redAccent),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                    ),
-                    onPressed: () {
-                      Navigator.of(ctx).pop();
-                      _confirmDeletePlayer(playerId, fullName);
-                    },
-                    icon: const Icon(Icons.delete_outline, size: 16),
-                    label: const Text('Удалить', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  ),
-                ),
-              ],
             ),
           ],
         ),
@@ -1707,4 +1738,110 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
       ],
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// ОТРИСОВКА ФУТБОЛЬНОГО ПОЛЯ (ГАЗОН С ПОЛОСАМИ)
+// ---------------------------------------------------------------------------
+class FootballPitchPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bgPaint = Paint()..color = const Color(0xFF1E4620);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+
+    final stripePaint = Paint()..color = const Color(0xFF235326);
+    final int stripes = 8;
+    final double stripeH = size.height / stripes;
+    for (int i = 0; i < stripes; i += 2) {
+      canvas.drawRect(Rect.fromLTWH(0, i * stripeH, size.width, stripeH), stripePaint);
+    }
+
+    final linePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.6)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    final pad = 12.0;
+    final pitchRect = Rect.fromLTRB(pad, pad, size.width - pad, size.height - pad);
+    canvas.drawRect(pitchRect, linePaint);
+
+    canvas.drawLine(
+      Offset(pad, size.height / 2),
+      Offset(size.width - pad, size.height / 2),
+      linePaint,
+    );
+
+    canvas.drawCircle(Offset(size.width / 2, size.height / 2), size.width * 0.16, linePaint);
+    canvas.drawCircle(Offset(size.width / 2, size.height / 2), 3.0, Paint()..color = Colors.white.withValues(alpha: 0.7));
+
+    final boxW = size.width * 0.55;
+    final boxH = size.height * 0.16;
+    canvas.drawRect(Rect.fromLTWH((size.width - boxW) / 2, pad, boxW, boxH), linePaint);
+    canvas.drawRect(Rect.fromLTWH((size.width - boxW) / 2, size.height - pad - boxH, boxW, boxH), linePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ---------------------------------------------------------------------------
+// ОТРИСОВКА МИНИ-ФУТБОЛЬНОГО ПОЛЯ (ПАРКЕТ / ТЕРАФЛЕКС В ЗАЛЕ)
+// ---------------------------------------------------------------------------
+class FutsalPitchPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final woodPaint = Paint()..color = const Color(0xFF8D4018);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), woodPaint);
+
+    final plankPaint = Paint()
+      ..color = const Color(0xFF7B3512)
+      ..strokeWidth = 1.0;
+    final int planks = 24;
+    final double plankW = size.width / planks;
+    for (int i = 1; i < planks; i++) {
+      canvas.drawLine(Offset(i * plankW, 0), Offset(i * plankW, size.height), plankPaint);
+    }
+
+    final linePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.75)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    final pad = 12.0;
+    final courtRect = Rect.fromLTRB(pad, pad, size.width - pad, size.height - pad);
+    canvas.drawRect(courtRect, linePaint);
+
+    canvas.drawLine(
+      Offset(pad, size.height / 2),
+      Offset(size.width - pad, size.height / 2),
+      linePaint,
+    );
+
+    canvas.drawCircle(Offset(size.width / 2, size.height / 2), size.width * 0.18, linePaint);
+
+    // 6-метровые вратарские дуги
+    final arcR = size.width * 0.32;
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(size.width / 2, pad), radius: arcR),
+      0,
+      3.14159,
+      false,
+      linePaint,
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(size.width / 2, size.height - pad), radius: arcR),
+      3.14159,
+      3.14159,
+      false,
+      linePaint,
+    );
+
+    // Отметки 10-метрового дабл-пенальти
+    final dotPaint = Paint()..color = Colors.white.withValues(alpha: 0.85);
+    canvas.drawCircle(Offset(size.width / 2, size.height * 0.28), 3.0, dotPaint);
+    canvas.drawCircle(Offset(size.width / 2, size.height * 0.72), 3.0, dotPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

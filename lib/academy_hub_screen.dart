@@ -146,7 +146,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // СЕЛЕКТОР СПОРТА (МИНИ-ФУТБОЛ ПЕРВЫЙ СЛЕВА)
   Widget _buildSportSelector() {
     final isFutsal = _sportType == 'futsal';
     return Container(
@@ -222,7 +221,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // СЕЛЕКТОР ВКЛАДОК (5 ВКЛАДОК СО СКРОЛЛОМ)
   Widget _buildTabSelector() {
     final tabs = [
       {'title': 'Таблица', 'icon': Icons.emoji_events_outlined, 'selectedIcon': Icons.emoji_events},
@@ -339,7 +337,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // 2. КАЛЕНДАРЬ + НАЗНАЧЕНИЕ МАТЧА + ПРОТОКОЛ
+  // 2. КАЛЕНДАРЬ + УДАЛЕНИЕ МАТЧА
   Widget _buildCalendarTab() {
     return FutureBuilder<List<Map<String, dynamic>>>(
       key: ValueKey('tab_calendar_${_refreshCounter}_$_sportType'),
@@ -359,7 +357,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           children: [
-            // Панель заголовка календаря и кнопка "Назначить матч"
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -446,8 +443,8 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              // Кнопка ввода счета
+                              const SizedBox(width: 6),
+                              // Кнопка счета
                               InkWell(
                                 onTap: () => _openScoreEditDialog(m, homeTeam, awayTeam),
                                 borderRadius: BorderRadius.circular(6),
@@ -458,6 +455,20 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: const Icon(Icons.edit_note, color: Color(0xFFFFB800), size: 18),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              // Кнопка удаления матча
+                              InkWell(
+                                onTap: () => _confirmDeleteMatch(m, homeTeam, awayTeam),
+                                borderRadius: BorderRadius.circular(6),
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.redAccent.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
                                 ),
                               ),
                             ],
@@ -520,8 +531,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                       const SizedBox(height: 8),
                       const Divider(color: Colors.white10, height: 1),
                       const SizedBox(height: 8),
-
-                      // Кнопка вызова протокола матча (авторы голов и ассисты)
                       InkWell(
                         onTap: () => _openMatchProtocolDialog(m, homeTeam, awayTeam),
                         borderRadius: BorderRadius.circular(8),
@@ -550,7 +559,71 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // ДИАЛОГ 1: НАЗНАЧЕНИЕ НОВОГО МАТЧА
+  // УДАЛЕНИЕ МАТЧА
+  void _confirmDeleteMatch(Map<String, dynamic> match, String homeTeam, String awayTeam) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF141724),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Colors.redAccent, width: 1),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('Удаление матча', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          'Удалить матч «$homeTeam vs $awayTeam» из календаря?',
+          style: const TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _deleteMatch(match['id'].toString());
+            },
+            child: const Text('Удалить', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteMatch(String matchId) async {
+    try {
+      await Supabase.instance.client.from('match_events').delete().eq('match_id', matchId);
+      await Supabase.instance.client.from('matches').delete().eq('id', matchId);
+
+      if (!mounted) return;
+      setState(() => _refreshCounter++);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Матч успешно удален из календаря!'),
+          backgroundColor: Color(0xFF141724),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка удаления матча: $e'), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
+
   void _openScheduleMatchDialog() async {
     final teamsRes = await Supabase.instance.client.from('teams').select('id, name').order('name');
     final teams = List<Map<String, dynamic>>.from(teamsRes);
@@ -692,7 +765,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // ДИАЛОГ 2: ПРОТОКОЛ МАТЧА (ГОЛЫ И АССИСТЫ)
   void _openMatchProtocolDialog(Map<String, dynamic> match, String homeTeam, String awayTeam) {
     final matchId = match['id'].toString();
 
@@ -804,12 +876,10 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // ДИАЛОГ ВВОДА ГОЛА И АССИСТА
   void _openAddGoalDialog(Map<String, dynamic> match, String homeTeam, String awayTeam, VoidCallback onSaved) async {
     final homeTeamId = match['home_team_id'].toString();
     final awayTeamId = match['away_team_id'].toString();
 
-    // Загружаем игроков обеих команд
     final homePlayersRes = await Supabase.instance.client.from('player_profiles').select('*, users(first_name, last_name)').eq('team_id', homeTeamId);
     final awayPlayersRes = await Supabase.instance.client.from('player_profiles').select('*, users(first_name, last_name)').eq('team_id', awayTeamId);
 
@@ -939,7 +1009,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // 3. ВКЛАДКА БОМБАРДИРЫ (ЛИДЕРЫ ТУРНИРА)
+  // 3. БОМБАРДИРЫ
   Widget _buildTopScorersTab() {
     return FutureBuilder<List<Map<String, dynamic>>>(
       key: ValueKey('scorers_${_refreshCounter}_$_sportType'),
@@ -974,11 +1044,9 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
           );
         }
 
-        // Агрегируем голы и ассисты по игрокам
         final Map<String, Map<String, dynamic>> playerStats = {};
 
         for (final ev in events) {
-          // 1. Голы
           final p = ev['player'] as Map<String, dynamic>?;
           if (p != null) {
             final pid = p['id'].toString();
@@ -992,7 +1060,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
             playerStats[pid]!['goals'] = (playerStats[pid]!['goals'] as int) + 1;
           }
 
-          // 2. Ассисты
           final a = ev['assist'] as Map<String, dynamic>?;
           if (a != null) {
             final aid = a['id'].toString();
@@ -1021,7 +1088,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           children: [
-            // Заголовок таблицы
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -1045,7 +1111,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Список снайперов
             ...List.generate(ranked.length, (index) {
               final item = ranked[index];
               final p = item['player'] as Map<String, dynamic>;
@@ -1059,9 +1124,9 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
               final avatarUrl = p['avatar_url']?.toString();
 
               Color rankColor = Colors.white54;
-              if (index == 0) rankColor = const Color(0xFFFFD700); // Золото
-              if (index == 1) rankColor = const Color(0xFFC0C0C0); // Серебро
-              if (index == 2) rankColor = const Color(0xFFCD7F32); // Бронза
+              if (index == 0) rankColor = const Color(0xFFFFD700);
+              if (index == 1) rankColor = const Color(0xFFC0C0C0);
+              if (index == 2) rankColor = const Color(0xFFCD7F32);
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
@@ -1100,7 +1165,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                         ],
                       ),
                     ),
-                    // Показатели: Голы, Ассисты, Очки
                     Row(
                       children: [
                         _buildStatColumn('⚽', '$goals'),
@@ -1136,7 +1200,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // 4. ТАКТИКА (DRAG-AND-DROP + СКАМЕЙКА + ПОСТЕР)
+  // 4. ТАКТИКА
   Widget _buildTacticsTab() {
     final isFutsal = _sportType == 'futsal';
     final formations = isFutsal ? ['1-2-1 (Ромб)', '2-2 (Квадрат)', '4-0 (В линию)'] : ['2-3-1', '3-2-1', '2-2-2'];
@@ -1577,7 +1641,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // 5. СОСТАВ И КОМАНДЫ
+  // 5. СОСТАВ И КОМАНДЫ + УДАЛЕНИЕ КОМАНДЫ
   Widget _buildRosterAndTeamsTab() {
     return FutureBuilder<List<Map<String, dynamic>>>(
       key: ValueKey('teams_list_${_refreshCounter}_$_sportType'),
@@ -1683,6 +1747,78 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
         ],
       ),
     );
+  }
+
+  // УДАЛЕНИЕ КОМАНДЫ
+  void _confirmDeleteTeam(String teamId, String teamName) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF141724),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Colors.redAccent, width: 1),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('Удаление команды', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          'Вы уверены, что хотите удалить команду «$teamName»? Все игроки этой команды и статистика турнира будут удалены.',
+          style: const TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _deleteTeam(teamId, teamName);
+            },
+            child: const Text('Удалить', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteTeam(String teamId, String teamName) async {
+    try {
+      await Supabase.instance.client.from('tournament_standings').delete().eq('team_id', teamId);
+      await Supabase.instance.client.from('player_profiles').delete().eq('team_id', teamId);
+      await Supabase.instance.client.from('teams').delete().eq('id', teamId);
+
+      if (!mounted) return;
+      setState(() {
+        _activeTeamId = null;
+        _activeTeamName = null;
+        _onPitchPlayerIds.clear();
+        _refreshCounter++;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Команда «$teamName» успешно удалена!'),
+          backgroundColor: const Color(0xFF141724),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка удаления команды: $e'), backgroundColor: Colors.redAccent),
+      );
+    }
   }
 
   bool _matchesRole(String position, String filter) {
@@ -1793,6 +1929,13 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                       ],
                     ),
                   ),
+                  // Кнопка удаления команды
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                    tooltip: 'Удалить команду',
+                    onPressed: () => _confirmDeleteTeam(teamId, _activeTeamName ?? 'Команда'),
+                  ),
+                  const SizedBox(width: 4),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFFB800),
@@ -2462,7 +2605,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
   }
 }
 
-// ОТРИСОВКА ФУТБОЛЬНОГО ПОЛЯ (ГАЗОН)
+// ОТРИСОВКА ФУТБОЛЬНОГО ПОЛЯ
 class FootballPitchPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -2499,7 +2642,7 @@ class FootballPitchPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// ОТРИСОВКА МИНИ-ФУТБОЛЬНОГО ПОЛЯ (ПАРКЕТ)
+// ОТРИСОВКА МИНИ-ФУТБОЛЬНОГО ПОЛЯ
 class FutsalPitchPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {

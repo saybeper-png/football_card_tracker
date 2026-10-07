@@ -23,7 +23,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
   // 0: Таблица, 1: Календарь, 2: Тактика, 3: Состав & Команды
   int _selectedTab = 0;
   int _refreshCounter = 0;
-  String _sportType = 'football'; // 'football' (7x7) или 'futsal' (5x5)
+  String _sportType = 'futsal'; // 'football' (7x7) или 'futsal' (5x5)
   String? _activeTeamId;
   String? _activeTeamName;
 

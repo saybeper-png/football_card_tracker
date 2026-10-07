@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -916,7 +917,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     }
   }
 
-  void _showExportedPosterDialog(ui.Uint8List pngBytes, String formation) {
+  void _showExportedPosterDialog(Uint8List pngBytes, String formation) {
     final teamName = _activeTeamName ?? 'Академия FC';
     final dateStr = '${DateTime.now().day.toString().padLeft(2, '0')}.${DateTime.now().month.toString().padLeft(2, '0')}.${DateTime.now().year}';
 

@@ -20,10 +20,11 @@ class AcademyHubScreen extends StatefulWidget {
 }
 
 class _AcademyHubScreenState extends State<AcademyHubScreen> {
-  int _selectedTab = 0; // 0: Таблица, 1: Календарь, 2: Состав / Команды
+  int _selectedTab = 0; // 0: Таблица, 1: Календарь, 2: Команды
   int _refreshCounter = 0;
   String? _activeTeamId;
   String? _activeTeamName;
+  String _selectedRoleFilter = 'ALL'; // ALL, GK, DEF, MID, ATT
 
   @override
   void initState() {
@@ -132,6 +133,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     }
   }
 
+  // 1. ВКЛАДКА ТАБЛИЦА
   Widget _buildStandingsTab() {
     return SingleChildScrollView(
       key: ValueKey('tab_standings_$_refreshCounter'),
@@ -154,6 +156,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
+  // 2. ВКЛАДКА КАЛЕНДАРЬ
   Widget _buildCalendarTab() {
     return FutureBuilder<List<Map<String, dynamic>>>(
       key: ValueKey('tab_calendar_$_refreshCounter'),
@@ -170,10 +173,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
         final matches = snapshot.data ?? [];
         if (matches.isEmpty) {
           return const Center(
-            child: Text(
-              'Расписание матчей формируется',
-              style: TextStyle(color: Colors.white54, fontSize: 14),
-            ),
+            child: Text('Расписание матчей формируется', style: TextStyle(color: Colors.white54, fontSize: 14)),
           );
         }
 
@@ -216,9 +216,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: isFinished
-                                  ? Colors.white10
-                                  : const Color(0xFFFFB800).withValues(alpha: 0.2),
+                              color: isFinished ? Colors.white10 : const Color(0xFFFFB800).withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -240,11 +238,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                                 color: Colors.white.withValues(alpha: 0.06),
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: const Icon(
-                                Icons.edit_note,
-                                color: Color(0xFFFFB800),
-                                size: 18,
-                              ),
+                              child: const Icon(Icons.edit_note, color: Color(0xFFFFB800), size: 18),
                             ),
                           ),
                         ],
@@ -270,9 +264,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                             color: Colors.black45,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: isFinished
-                                  ? const Color(0xFFFFB800).withValues(alpha: 0.4)
-                                  : Colors.white12,
+                              color: isFinished ? const Color(0xFFFFB800).withValues(alpha: 0.4) : Colors.white12,
                             ),
                           ),
                           child: Text(
@@ -322,10 +314,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
             children: [
               Icon(Icons.sports_score, color: Color(0xFFFFB800)),
               SizedBox(width: 8),
-              Text(
-                'Результат матча',
-                style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900),
-              ),
+              Text('Результат матча', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
             ],
           ),
           content: Column(
@@ -337,13 +326,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                   Expanded(
                     child: Column(
                       children: [
-                        Text(
-                          homeTeam,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
-                        ),
+                        Text(homeTeam, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         TextField(
                           controller: homeController,
@@ -367,13 +350,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                   Expanded(
                     child: Column(
                       children: [
-                        Text(
-                          awayTeam,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
-                        ),
+                        Text(awayTeam, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         TextField(
                           controller: awayController,
@@ -420,13 +397,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                 final matchId = match['id'].toString();
 
                 Navigator.of(ctx).pop();
-
-                _updateMatchScore(
-                  matchId: matchId,
-                  homeScore: hScore,
-                  awayScore: aScore,
-                  status: newStatus,
-                );
+                _updateMatchScore(matchId: matchId, homeScore: hScore, awayScore: aScore, status: newStatus);
               },
               child: const Text('Сохранить', style: TextStyle(fontWeight: FontWeight.w900)),
             ),
@@ -461,15 +432,12 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Ошибка обновления: $e'),
-          backgroundColor: Colors.redAccent,
-        ),
+        SnackBar(content: Text('Ошибка обновления: $e'), backgroundColor: Colors.redAccent),
       );
     }
   }
 
-  // Вкладка 3: Команды и Составы
+  // 3. ВКЛАДКА КОМАНДЫ И СОСТАВЫ
   Widget _buildRosterAndTeamsTab() {
     return FutureBuilder<List<Map<String, dynamic>>>(
       key: ValueKey('teams_list_$_refreshCounter'),
@@ -490,15 +458,11 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
 
         return Column(
           children: [
-            // Панель команд и кнопка "+ Создать команду"
             _buildTeamsBar(teams),
-            const SizedBox(height: 8),
-            // Состав активной команды
+            const SizedBox(height: 6),
             Expanded(
               child: _activeTeamId == null
-                  ? const Center(
-                      child: Text('Создайте первую команду', style: TextStyle(color: Colors.white54)),
-                    )
+                  ? const Center(child: Text('Создайте первую команду', style: TextStyle(color: Colors.white54)))
                   : _buildPlayersListForTeam(_activeTeamId!),
             ),
           ],
@@ -507,7 +471,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // Горизонтальный список команд + кнопка добавления
   Widget _buildTeamsBar(List<Map<String, dynamic>> teams) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -535,10 +498,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                     children: [
                       Icon(Icons.add_circle_outline, size: 14, color: Color(0xFFFFB800)),
                       SizedBox(width: 4),
-                      Text(
-                        'Создать команду',
-                        style: TextStyle(color: Color(0xFFFFB800), fontSize: 11, fontWeight: FontWeight.w800),
-                      ),
+                      Text('Создать команду', style: TextStyle(color: Color(0xFFFFB800), fontSize: 11, fontWeight: FontWeight.w800)),
                     ],
                   ),
                 ),
@@ -589,7 +549,62 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // Список игроков внутри выбранной команды
+  // Фильтрация игроков по амплуа
+  bool _matchesRole(String position, String filter) {
+    if (filter == 'ALL') return true;
+    final pos = position.toUpperCase();
+    if (filter == 'GK') return pos == 'GK';
+    if (filter == 'DEF') return ['CB', 'LB', 'RB', 'LWB', 'RWB'].contains(pos);
+    if (filter == 'MID') return ['CM', 'CDM', 'CAM', 'LM', 'RM'].contains(pos);
+    if (filter == 'ATT') return ['ST', 'CF', 'LW', 'RW'].contains(pos);
+    return true;
+  }
+
+  Widget _buildRoleFilterChips() {
+    final filters = [
+      {'key': 'ALL', 'label': 'Все'},
+      {'key': 'GK', 'label': 'Вратари'},
+      {'key': 'DEF', 'label': 'Защита'},
+      {'key': 'MID', 'label': 'Полузащита'},
+      {'key': 'ATT', 'label': 'Атака'},
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: filters.map((f) {
+          final isSelected = _selectedRoleFilter == f['key'];
+          return Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: InkWell(
+              onTap: () => setState(() => _selectedRoleFilter = f['key']!),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: isSelected ? Colors.white.withValues(alpha: 0.12) : const Color(0xFF141724),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected ? const Color(0xFFFFB800) : Colors.white.withValues(alpha: 0.05),
+                  ),
+                ),
+                child: Text(
+                  f['label']!,
+                  style: TextStyle(
+                    color: isSelected ? const Color(0xFFFFB800) : Colors.white60,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   Widget _buildPlayersListForTeam(String teamId) {
     return FutureBuilder<List<Map<String, dynamic>>>(
       key: ValueKey('roster_${teamId}_$_refreshCounter'),
@@ -603,13 +618,17 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
           return const Center(child: CircularProgressIndicator(color: Color(0xFFFFB800)));
         }
 
-        final players = snapshot.data ?? [];
+        final allPlayers = snapshot.data ?? [];
+        final filteredPlayers = allPlayers.where((p) {
+          final pos = p['position']?.toString() ?? 'ST';
+          return _matchesRole(pos, _selectedRoleFilter);
+        }).toList();
 
         return ListView(
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           children: [
-            // Заголовок команды и кнопка добавления игрока
+            // Шапка команды + кнопка добавления игрока
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -638,7 +657,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                           style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800),
                         ),
                         Text(
-                          'Игроков в заявке: ${players.length}',
+                          'Игроков в заявке: ${allPlayers.length}',
                           style: const TextStyle(color: Colors.white54, fontSize: 12),
                         ),
                       ],
@@ -658,9 +677,13 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 10),
+
+            // Фильтры по амплуа
+            _buildRoleFilterChips(),
             const SizedBox(height: 12),
 
-            if (players.isEmpty)
+            if (allPlayers.isEmpty)
               Container(
                 padding: const EdgeInsets.all(28),
                 alignment: Alignment.center,
@@ -669,31 +692,31 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                 ),
-                child: Column(
+                child: const Column(
                   children: [
-                    const Icon(Icons.person_outline, size: 40, color: Colors.white30),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'В этой команде пока нет игроков',
-                      style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Нажмите «+ Игрок» выше, чтобы добавить первого футболиста',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white38, fontSize: 12),
-                    ),
+                    Icon(Icons.person_outline, size: 40, color: Colors.white30),
+                    SizedBox(height: 10),
+                    Text('В этой команде пока нет игроков', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 14)),
+                    SizedBox(height: 4),
+                    Text('Нажмите «+ Игрок» выше, чтобы добавить первого футболиста', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12)),
                   ],
                 ),
               )
+            else if (filteredPlayers.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(24),
+                alignment: Alignment.center,
+                child: const Text('Нет игроков с выбранным амплуа', style: TextStyle(color: Colors.white38, fontSize: 13)),
+              )
             else
-              ...List.generate(players.length, (index) {
-                final p = players[index];
+              ...List.generate(filteredPlayers.length, (index) {
+                final p = filteredPlayers[index];
                 final user = p['users'] as Map<String, dynamic>?;
                 final fullName = '${user?['first_name'] ?? p['first_name'] ?? 'Игрок'} ${user?['last_name'] ?? p['last_name'] ?? ''}'.trim();
                 final num = p['jersey_number'] ?? index + 1;
                 final pos = p['position'] ?? 'ST';
                 final ovr = p['ovr'] ?? 75;
+                final avatarUrl = p['avatar_url']?.toString();
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
@@ -701,7 +724,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                     onTap: () => _showPlayerDetailsDialog(p, fullName),
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
                         color: const Color(0xFF141724),
                         borderRadius: BorderRadius.circular(12),
@@ -709,19 +732,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                       ),
                       child: Row(
                         children: [
-                          Container(
-                            width: 36,
-                            height: 36,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.06),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '#$num',
-                              style: const TextStyle(color: Color(0xFFFFB800), fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                          ),
+                          _buildPlayerAvatar(avatarUrl: avatarUrl, number: num, size: 38),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -763,7 +774,41 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // 1. Диалог создания команды
+  // Виджет аватара (фото из сети или стилизованный бейдж с номером)
+  Widget _buildPlayerAvatar({String? avatarUrl, required int number, double size = 36}) {
+    if (avatarUrl != null && avatarUrl.trim().startsWith('http')) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(size / 3),
+        child: Image.network(
+          avatarUrl.trim(),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _buildFallbackAvatar(number, size),
+        ),
+      );
+    }
+    return _buildFallbackAvatar(number, size);
+  }
+
+  Widget _buildFallbackAvatar(int number, double size) {
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(size / 3),
+        border: Border.all(color: const Color(0xFFFFB800).withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        '#$number',
+        style: TextStyle(color: const Color(0xFFFFB800), fontWeight: FontWeight.bold, fontSize: size * 0.36),
+      ),
+    );
+  }
+
+  // СОЗДАНИЕ КОМАНДЫ
   void _openCreateTeamDialog() {
     final nameController = TextEditingController();
     final shortNameController = TextEditingController();
@@ -850,7 +895,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
 
       final newId = res['id'].toString();
 
-      // Добавляем команду в таблицу турнира
       try {
         await Supabase.instance.client.from('tournament_standings').insert({
           'tournament_id': widget.tournamentId,
@@ -888,14 +932,23 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     }
   }
 
-  // 2. Диалог добавления игрока в команду
+  // СОЗДАНИЕ ИГРОКА С ФОТО / АВАТАРОМ
   void _openCreatePlayerDialog(String teamId) {
     final firstNameController = TextEditingController();
     final lastNameController = TextEditingController();
     final numberController = TextEditingController(text: '10');
     final ovrController = TextEditingController(text: '75');
+    final avatarController = TextEditingController();
     String selectedPos = 'ST';
+    String selectedFoot = 'Правая';
     final positions = ['GK', 'CB', 'LB', 'RB', 'CM', 'CDM', 'CAM', 'LW', 'RW', 'ST'];
+
+    final presetAvatars = [
+      'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150',
+      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+      'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150',
+      'https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=150',
+    ];
 
     showDialog(
       context: context,
@@ -911,12 +964,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
               const Icon(Icons.person_add, color: Color(0xFFFFB800)),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  'Игрок: ${_activeTeamName ?? ""}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900),
-                ),
+                child: Text('Новый игрок: ${_activeTeamName ?? ""}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
               ),
             ],
           ),
@@ -982,21 +1030,82 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedPos,
-                  dropdownColor: const Color(0xFF141724),
-                  style: const TextStyle(color: Colors.white),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: selectedPos,
+                        dropdownColor: const Color(0xFF141724),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Позиция',
+                          labelStyle: const TextStyle(color: Colors.white60),
+                          filled: true,
+                          fillColor: Colors.black26,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                        ),
+                        items: positions.map((pos) => DropdownMenuItem(value: pos, child: Text(pos))).toList(),
+                        onChanged: (val) {
+                          if (val != null) setDialogState(() => selectedPos = val);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: selectedFoot,
+                        dropdownColor: const Color(0xFF141724),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Нога',
+                          labelStyle: const TextStyle(color: Colors.white60),
+                          filled: true,
+                          fillColor: Colors.black26,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'Правая', child: Text('Правая')),
+                          DropdownMenuItem(value: 'Левая', child: Text('Левая')),
+                          DropdownMenuItem(value: 'Обе', child: Text('Обе')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) setDialogState(() => selectedFoot = val);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: avatarController,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
                   decoration: InputDecoration(
-                    labelText: 'Позиция',
+                    labelText: 'URL фото / аватара',
                     labelStyle: const TextStyle(color: Colors.white60),
+                    hintText: 'https://...',
+                    hintStyle: const TextStyle(color: Colors.white24),
                     filled: true,
                     fillColor: Colors.black26,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                   ),
-                  items: positions.map((pos) => DropdownMenuItem(value: pos, child: Text(pos))).toList(),
-                  onChanged: (val) {
-                    if (val != null) setDialogState(() => selectedPos = val);
-                  },
+                ),
+                const SizedBox(height: 8),
+                // Пресеты аватаров
+                Row(
+                  children: [
+                    const Text('Пресеты: ', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    ...presetAvatars.map((url) => GestureDetector(
+                      onTap: () => setDialogState(() => avatarController.text = url),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFFFB800), width: 1),
+                        ),
+                        child: CircleAvatar(radius: 12, backgroundImage: NetworkImage(url)),
+                      ),
+                    )),
+                  ],
                 ),
               ],
             ),
@@ -1019,6 +1128,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
 
                 final num = int.tryParse(numberController.text.trim()) ?? 10;
                 final ovr = int.tryParse(ovrController.text.trim()) ?? 75;
+                final avatar = avatarController.text.trim();
 
                 Navigator.of(ctx).pop();
                 _createPlayer(
@@ -1028,6 +1138,8 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                   number: num,
                   position: selectedPos,
                   ovr: ovr,
+                  preferredFoot: selectedFoot,
+                  avatarUrl: avatar,
                 );
               },
               child: const Text('Сохранить', style: TextStyle(fontWeight: FontWeight.w900)),
@@ -1045,9 +1157,10 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     required int number,
     required String position,
     required int ovr,
+    required String preferredFoot,
+    required String avatarUrl,
   }) async {
     try {
-      // 1. Пытаемся создать запись в users, если таблица связана
       String? newUserId;
       try {
         final uRes = await Supabase.instance.client.from('users').insert({
@@ -1058,19 +1171,17 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
         newUserId = uRes['id']?.toString();
       } catch (_) {}
 
-      // 2. Создаем профиль игрока в player_profiles
       final Map<String, dynamic> insertData = {
         'team_id': teamId,
         'jersey_number': number,
         'position': position,
         'ovr': ovr,
+        'preferred_foot': preferredFoot,
+        'first_name': firstName,
+        'last_name': lastName,
       };
-      if (newUserId != null) {
-        insertData['user_id'] = newUserId;
-      } else {
-        insertData['first_name'] = firstName;
-        insertData['last_name'] = lastName;
-      }
+      if (newUserId != null) insertData['user_id'] = newUserId;
+      if (avatarUrl.isNotEmpty) insertData['avatar_url'] = avatarUrl;
 
       await Supabase.instance.client.from('player_profiles').insert(insertData);
 
@@ -1092,13 +1203,322 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     }
   }
 
-  // 3. Карточка детальной информации об игроке
+  // РЕДАКТИРОВАНИЕ ИГРОКА
+  void _openEditPlayerDialog(Map<String, dynamic> player) {
+    final user = player['users'] as Map<String, dynamic>?;
+    final firstNameController = TextEditingController(text: user?['first_name'] ?? player['first_name'] ?? '');
+    final lastNameController = TextEditingController(text: user?['last_name'] ?? player['last_name'] ?? '');
+    final numberController = TextEditingController(text: '${player['jersey_number'] ?? 10}');
+    final ovrController = TextEditingController(text: '${player['ovr'] ?? 75}');
+    final avatarController = TextEditingController(text: player['avatar_url']?.toString() ?? '');
+    String selectedPos = player['position']?.toString() ?? 'ST';
+    String selectedFoot = player['preferred_foot']?.toString() ?? 'Правая';
+    final positions = ['GK', 'CB', 'LB', 'RB', 'CM', 'CDM', 'CAM', 'LW', 'RW', 'ST'];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF141724),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.edit, color: Color(0xFFFFB800)),
+              SizedBox(width: 8),
+              Text('Редактировать игрока', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: firstNameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Имя',
+                    labelStyle: const TextStyle(color: Colors.white60),
+                    filled: true,
+                    fillColor: Colors.black26,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: lastNameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Фамилия',
+                    labelStyle: const TextStyle(color: Colors.white60),
+                    filled: true,
+                    fillColor: Colors.black26,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: numberController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Номер (#)',
+                          labelStyle: const TextStyle(color: Colors.white60),
+                          filled: true,
+                          fillColor: Colors.black26,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: ovrController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Color(0xFFFFB800), fontWeight: FontWeight.bold),
+                        decoration: InputDecoration(
+                          labelText: 'OVR',
+                          labelStyle: const TextStyle(color: Colors.white60),
+                          filled: true,
+                          fillColor: Colors.black26,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: positions.contains(selectedPos) ? selectedPos : 'ST',
+                        dropdownColor: const Color(0xFF141724),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Позиция',
+                          labelStyle: const TextStyle(color: Colors.white60),
+                          filled: true,
+                          fillColor: Colors.black26,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                        ),
+                        items: positions.map((pos) => DropdownMenuItem(value: pos, child: Text(pos))).toList(),
+                        onChanged: (val) {
+                          if (val != null) setDialogState(() => selectedPos = val);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: ['Правая', 'Левая', 'Обе'].contains(selectedFoot) ? selectedFoot : 'Правая',
+                        dropdownColor: const Color(0xFF141724),
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Нога',
+                          labelStyle: const TextStyle(color: Colors.white60),
+                          filled: true,
+                          fillColor: Colors.black26,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'Правая', child: Text('Правая')),
+                          DropdownMenuItem(value: 'Левая', child: Text('Левая')),
+                          DropdownMenuItem(value: 'Обе', child: Text('Обе')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) setDialogState(() => selectedFoot = val);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: avatarController,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  decoration: InputDecoration(
+                    labelText: 'URL аватара',
+                    labelStyle: const TextStyle(color: Colors.white60),
+                    filled: true,
+                    fillColor: Colors.black26,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFB800),
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                final playerId = player['id'].toString();
+                final fName = firstNameController.text.trim();
+                final lName = lastNameController.text.trim();
+                final num = int.tryParse(numberController.text.trim()) ?? 10;
+                final ovr = int.tryParse(ovrController.text.trim()) ?? 75;
+                final avatar = avatarController.text.trim();
+                final userId = player['user_id']?.toString();
+
+                Navigator.of(ctx).pop();
+                _updatePlayer(
+                  playerId: playerId,
+                  userId: userId,
+                  firstName: fName,
+                  lastName: lName,
+                  number: num,
+                  position: selectedPos,
+                  ovr: ovr,
+                  preferredFoot: selectedFoot,
+                  avatarUrl: avatar,
+                );
+              },
+              child: const Text('Сохранить', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _updatePlayer({
+    required String playerId,
+    String? userId,
+    required String firstName,
+    required String lastName,
+    required int number,
+    required String position,
+    required int ovr,
+    required String preferredFoot,
+    required String avatarUrl,
+  }) async {
+    try {
+      final Map<String, dynamic> updateData = {
+        'jersey_number': number,
+        'position': position,
+        'ovr': ovr,
+        'preferred_foot': preferredFoot,
+        'first_name': firstName,
+        'last_name': lastName,
+        'avatar_url': avatarUrl,
+      };
+
+      await Supabase.instance.client.from('player_profiles').update(updateData).eq('id', playerId);
+
+      if (userId != null) {
+        try {
+          await Supabase.instance.client.from('users').update({
+            'first_name': firstName,
+            'last_name': lastName,
+          }).eq('id', userId);
+        } catch (_) {}
+      }
+
+      if (!mounted) return;
+      setState(() => _refreshCounter++);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Данные игрока успешно обновлены!'),
+          backgroundColor: Color(0xFF141724),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка обновления игрока: $e'), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
+
+  // УДАЛЕНИЕ ИГРОКА
+  void _confirmDeletePlayer(String playerId, String fullName) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF141724),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Colors.redAccent, width: 1),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('Удаление игрока', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          'Вы уверены, что хотите удалить «$fullName» из состава?',
+          style: const TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _deletePlayer(playerId, fullName);
+            },
+            child: const Text('Удалить', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deletePlayer(String playerId, String fullName) async {
+    try {
+      await Supabase.instance.client.from('player_profiles').delete().eq('id', playerId);
+
+      if (!mounted) return;
+      setState(() => _refreshCounter++);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Игрок «$fullName» удален из состава'),
+          backgroundColor: const Color(0xFF141724),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка удаления игрока: $e'), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
+
+  // КАРТОЧКА ИГРОКА (FUT STYLE) С КНОПКАМИ ИЗМЕНИТЬ И УДАЛИТЬ
   void _showPlayerDetailsDialog(Map<String, dynamic> player, String fullName) {
     final num = player['jersey_number'] ?? 10;
     final pos = player['position'] ?? 'ST';
     final ovr = player['ovr'] ?? 75;
     final foot = player['preferred_foot'] ?? 'Правая';
     final teamName = _activeTeamName ?? 'Академия';
+    final avatarUrl = player['avatar_url']?.toString();
+    final playerId = player['id'].toString();
 
     showDialog(
       context: context,
@@ -1112,7 +1532,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Верхняя часть карточки (Золотой герб и рейтинг)
+            // Верхняя часть карточки (Рейтинг, Аватар, Номер)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1140,9 +1560,12 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                     ),
                   ],
                 ),
+                // Центр: фото игрока
+                _buildPlayerAvatar(avatarUrl: avatarUrl, number: num, size: 64),
+                // Правая часть: номер
                 Container(
-                  width: 54,
-                  height: 54,
+                  width: 44,
+                  height: 44,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
@@ -1154,20 +1577,19 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                     boxShadow: [
                       BoxShadow(
                         color: const Color(0xFFFFB800).withValues(alpha: 0.4),
-                        blurRadius: 14,
-                        offset: const Offset(0, 4),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
                       )
                     ],
                   ),
                   child: Text(
                     '#$num',
-                    style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.w900),
+                    style: const TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.w900),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 14),
-            // Имя и Команда
             Text(
               fullName.toUpperCase(),
               textAlign: TextAlign.center,
@@ -1183,10 +1605,9 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
               teamName,
               style: const TextStyle(color: Color(0xFFFFB800), fontSize: 13, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
             const Divider(color: Colors.white12, height: 1),
             const SizedBox(height: 14),
-            // Сетка ключевых футбольных атрибутов
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -1198,10 +1619,9 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                 _buildStatBadge('PHY', '${ovr - 4}'),
               ],
             ),
-            const SizedBox(height: 16),
-            // Дополнительная информация
+            const SizedBox(height: 14),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: Colors.black38,
                 borderRadius: BorderRadius.circular(12),
@@ -1215,13 +1635,53 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+
+            // Кнопки управления: Изменить и Удалить
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFFFB800),
+                      side: const BorderSide(color: Color(0xFFFFB800)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _openEditPlayerDialog(player);
+                    },
+                    icon: const Icon(Icons.edit, size: 16),
+                    label: const Text('Изменить', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      side: const BorderSide(color: Colors.redAccent),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _confirmDeletePlayer(playerId, fullName);
+                    },
+                    icon: const Icon(Icons.delete_outline, size: 16),
+                    label: const Text('Удалить', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
         actions: [
           Center(
             child: TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Закрыть карточку', style: TextStyle(color: Colors.white60, fontWeight: FontWeight.bold)),
+              child: const Text('Закрыть', style: TextStyle(color: Colors.white54)),
             ),
           ),
         ],

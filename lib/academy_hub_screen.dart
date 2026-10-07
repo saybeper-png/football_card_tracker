@@ -1,4 +1,6 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'tournament_standings_widget.dart';
 import 'widgets/dynamic_block_renderer.dart';
@@ -23,19 +25,99 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
   // 0: Таблица, 1: Календарь, 2: Тактика, 3: Состав & Команды
   int _selectedTab = 0;
   int _refreshCounter = 0;
-  String _sportType = 'futsal'; // 'football' (7x7) или 'futsal' (5x5)
+
+  // Мини-футбол выбран по умолчанию
+  String _sportType = 'futsal'; 
   String? _activeTeamId;
   String? _activeTeamName;
 
-  // Тактические схемы
-  String _selectedFootballFormation = '2-3-1';
+  // Тактические схемы и позиции
   String _selectedFutsalFormation = '1-2-1 (Ромб)';
+  String _selectedFootballFormation = '2-3-1';
   String _selectedRoleFilter = 'ALL';
+
+  // Drag-and-Drop, Скамейка и Экспорт
+  final GlobalKey _pitchBoundaryKey = GlobalKey();
+  List<Offset> _pitchPositions = [];
+  List<String> _onPitchPlayerIds = [];
+  int? _selectedPitchNodeIndex;
 
   @override
   void initState() {
     super.initState();
     _activeTeamId = widget.myTeamId;
+    _resetFormationPositions();
+  }
+
+  void _resetFormationPositions() {
+    final isFutsal = _sportType == 'futsal';
+    final form = isFutsal ? _selectedFutsalFormation : _selectedFootballFormation;
+    setState(() {
+      _selectedPitchNodeIndex = null;
+      _pitchPositions = _getDefaultPositions(isFutsal, form);
+    });
+  }
+
+  List<Offset> _getDefaultPositions(bool isFutsal, String formation) {
+    if (isFutsal) {
+      if (formation == '1-2-1 (Ромб)') {
+        return [
+          const Offset(0.50, 0.90), // ВРТ
+          const Offset(0.50, 0.68), // ФИКС
+          const Offset(0.20, 0.46), // Л.АЛА
+          const Offset(0.80, 0.46), // П.АЛА
+          const Offset(0.50, 0.18), // СТОЛБ
+        ];
+      } else if (formation == '2-2 (Квадрат)') {
+        return [
+          const Offset(0.50, 0.90),
+          const Offset(0.28, 0.65),
+          const Offset(0.72, 0.65),
+          const Offset(0.28, 0.28),
+          const Offset(0.72, 0.28),
+        ];
+      } else {
+        return [
+          const Offset(0.50, 0.90),
+          const Offset(0.16, 0.52),
+          const Offset(0.38, 0.58),
+          const Offset(0.62, 0.58),
+          const Offset(0.84, 0.52),
+        ];
+      }
+    } else {
+      if (formation == '2-3-1') {
+        return [
+          const Offset(0.50, 0.92), // GK
+          const Offset(0.28, 0.73), // LB
+          const Offset(0.72, 0.73), // RB
+          const Offset(0.18, 0.48), // LM
+          const Offset(0.50, 0.48), // CM
+          const Offset(0.82, 0.48), // RM
+          const Offset(0.50, 0.20), // ST
+        ];
+      } else if (formation == '3-2-1') {
+        return [
+          const Offset(0.50, 0.92),
+          const Offset(0.20, 0.73),
+          const Offset(0.50, 0.75),
+          const Offset(0.80, 0.73),
+          const Offset(0.35, 0.48),
+          const Offset(0.65, 0.48),
+          const Offset(0.50, 0.20),
+        ];
+      } else {
+        return [
+          const Offset(0.50, 0.92),
+          const Offset(0.30, 0.72),
+          const Offset(0.70, 0.72),
+          const Offset(0.30, 0.48),
+          const Offset(0.70, 0.48),
+          const Offset(0.30, 0.22),
+          const Offset(0.70, 0.22),
+        ];
+      }
+    }
   }
 
   @override
@@ -63,7 +145,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // Переключатель вида спорта (Футбол 7х7 vs Зал 5х5)
+  // 1-я кнопка: МИНИ-ФУТБОЛ 5х5, 2-я кнопка: ФУТБОЛ 7х7
   Widget _buildSportSelector() {
     final isFutsal = _sportType == 'futsal';
     return Container(
@@ -76,36 +158,21 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
       ),
       child: Row(
         children: [
+          // КНОПКА 1 (СЛЕВА): МИНИ-ФУТБОЛ
           Expanded(
             child: GestureDetector(
-              onTap: () => setState(() => _sportType = 'football'),
+              onTap: () {
+                if (_sportType != 'futsal') {
+                  setState(() {
+                    _sportType = 'futsal';
+                    _onPitchPlayerIds.clear();
+                    _resetFormationPositions();
+                  });
+                }
+              },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 7),
-                decoration: BoxDecoration(
-                  color: !isFutsal ? const Color(0xFF2E7D32) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.sports_soccer, size: 14, color: Colors.white),
-                    SizedBox(width: 6),
-                    Text(
-                      'Футбол 7х7 (Газон)',
-                      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _sportType = 'futsal'),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 7),
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
                   color: isFutsal ? const Color(0xFFD84315) : Colors.transparent,
                   borderRadius: BorderRadius.circular(9),
@@ -117,6 +184,40 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                     SizedBox(width: 6),
                     Text(
                       'Мини-футбол 5х5 (Зал)',
+                      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // КНОПКА 2 (СПРАВА): ФУТБОЛ
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                if (_sportType != 'football') {
+                  setState(() {
+                    _sportType = 'football';
+                    _onPitchPlayerIds.clear();
+                    _resetFormationPositions();
+                  });
+                }
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: !isFutsal ? const Color(0xFF2E7D32) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.sports_soccer, size: 14, color: Colors.white),
+                    SizedBox(width: 6),
+                    Text(
+                      'Футбол 7х7 (Газон)',
                       style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -394,11 +495,12 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // 3. ТАКТИЧЕСКАЯ ДОСКА (PITCH VIEW)
+  // 3. ТАКТИКА (DRAG-AND-DROP + СКАМЕЙКА + ПОСТЕР)
   Widget _buildTacticsTab() {
     final isFutsal = _sportType == 'futsal';
     final formations = isFutsal ? ['1-2-1 (Ромб)', '2-2 (Квадрат)', '4-0 (В линию)'] : ['2-3-1', '3-2-1', '2-2-2'];
     final currentFormation = isFutsal ? _selectedFutsalFormation : _selectedFootballFormation;
+    final int targetStartersCount = isFutsal ? 5 : 7;
 
     return FutureBuilder<List<Map<String, dynamic>>>(
       key: ValueKey('tactics_roster_${_activeTeamId}_$_refreshCounter'),
@@ -408,17 +510,40 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
           .eq('team_id', _activeTeamId ?? widget.myTeamId)
           .order('jersey_number', ascending: true),
       builder: (context, snapshot) {
-        final players = snapshot.data ?? [];
+        final allPlayers = snapshot.data ?? [];
+
+        if (_onPitchPlayerIds.isEmpty && allPlayers.isNotEmpty) {
+          _onPitchPlayerIds = allPlayers.take(targetStartersCount).map((p) => p['id'].toString()).toList();
+        }
+
+        final starters = <Map<String, dynamic>>[];
+        final bench = <Map<String, dynamic>>[];
+
+        for (final p in allPlayers) {
+          final pid = p['id'].toString();
+          if (_onPitchPlayerIds.contains(pid)) {
+            starters.add(p);
+          } else {
+            bench.add(p);
+          }
+        }
+
+        while (starters.length < targetStartersCount && bench.isNotEmpty) {
+          final extra = bench.removeAt(0);
+          starters.add(extra);
+          _onPitchPlayerIds.add(extra['id'].toString());
+        }
+
+        if (_pitchPositions.length != targetStartersCount) {
+          _pitchPositions = _getDefaultPositions(isFutsal, currentFormation);
+        }
 
         return Column(
           children: [
-            // Панель выбора схемы
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               child: Row(
                 children: [
-                  const Text('СХЕМА:', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -450,6 +575,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                                     } else {
                                       _selectedFootballFormation = form;
                                     }
+                                    _resetFormationPositions();
                                   });
                                 }
                               },
@@ -459,47 +585,70 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  IconButton(
+                    tooltip: 'Сбросить расстановку к схеме',
+                    onPressed: _resetFormationPositions,
+                    icon: const Icon(Icons.restart_alt, color: Colors.white60, size: 20),
+                  ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFB800),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () => _exportTacticsImage(currentFormation),
+                    icon: const Icon(Icons.camera_alt_outlined, size: 15),
+                    label: const Text('Постер', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
+                  ),
                 ],
               ),
             ),
-            // Интерактивное тактическое поле
+
             Expanded(
+              flex: 5,
               child: Container(
-                margin: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                margin: const EdgeInsets.fromLTRB(16, 2, 16, 8),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.5),
-                      blurRadius: 16,
+                      blurRadius: 14,
                       offset: const Offset(0, 4),
                     )
                   ],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(18),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return Stack(
-                        children: [
-                          // Отрисовка поля (Газон или Паркет)
-                          CustomPaint(
-                            size: Size(constraints.maxWidth, constraints.maxHeight),
-                            painter: isFutsal ? FutsalPitchPainter() : FootballPitchPainter(),
-                          ),
-                          // Размещение игроков по координатам схемы
-                          ..._buildPitchPlayerNodes(
-                            constraints: constraints,
-                            isFutsal: isFutsal,
-                            formation: currentFormation,
-                            players: players,
-                          ),
-                        ],
-                      );
-                    },
+                  child: RepaintBoundary(
+                    key: _pitchBoundaryKey,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return Stack(
+                          children: [
+                            CustomPaint(
+                              size: Size(constraints.maxWidth, constraints.maxHeight),
+                              painter: isFutsal ? FutsalPitchPainter() : FootballPitchPainter(),
+                            ),
+                            ..._buildDraggablePlayerNodes(
+                              constraints: constraints,
+                              isFutsal: isFutsal,
+                              starters: starters,
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
+            ),
+
+            Expanded(
+              flex: 2,
+              child: _buildBenchBar(bench),
             ),
           ],
         );
@@ -507,95 +656,47 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // Расчет координат игроков на поле
-  List<Widget> _buildPitchPlayerNodes({
+  List<Widget> _buildDraggablePlayerNodes({
     required BoxConstraints constraints,
     required bool isFutsal,
-    required String formation,
-    required List<Map<String, dynamic>> players,
+    required List<Map<String, dynamic>> starters,
   }) {
-    List<Map<String, dynamic>> slots = [];
-
-    if (isFutsal) {
-      if (formation == '1-2-1 (Ромб)') {
-        slots = [
-          {'pos': Offset(0.50, 0.90), 'role': 'ВРТ'},
-          {'pos': Offset(0.50, 0.68), 'role': 'ФИКС'},
-          {'pos': Offset(0.20, 0.46), 'role': 'Л.АЛА'},
-          {'pos': Offset(0.80, 0.46), 'role': 'П.АЛА'},
-          {'pos': Offset(0.50, 0.18), 'role': 'СТОЛБ'},
-        ];
-      } else if (formation == '2-2 (Квадрат)') {
-        slots = [
-          {'pos': Offset(0.50, 0.90), 'role': 'ВРТ'},
-          {'pos': Offset(0.28, 0.65), 'role': 'Л.ЗАЩ'},
-          {'pos': Offset(0.72, 0.65), 'role': 'П.ЗАЩ'},
-          {'pos': Offset(0.28, 0.28), 'role': 'Л.НАП'},
-          {'pos': Offset(0.72, 0.28), 'role': 'П.НАП'},
-        ];
-      } else {
-        slots = [
-          {'pos': Offset(0.50, 0.90), 'role': 'ВРТ'},
-          {'pos': Offset(0.16, 0.52), 'role': 'АЛА'},
-          {'pos': Offset(0.38, 0.58), 'role': 'ФИКС'},
-          {'pos': Offset(0.62, 0.58), 'role': 'ФИКС'},
-          {'pos': Offset(0.84, 0.52), 'role': 'АЛА'},
-        ];
-      }
-    } else {
-      if (formation == '2-3-1') {
-        slots = [
-          {'pos': Offset(0.50, 0.92), 'role': 'GK'},
-          {'pos': Offset(0.28, 0.73), 'role': 'LB'},
-          {'pos': Offset(0.72, 0.73), 'role': 'RB'},
-          {'pos': Offset(0.18, 0.48), 'role': 'LM'},
-          {'pos': Offset(0.50, 0.48), 'role': 'CM'},
-          {'pos': Offset(0.82, 0.48), 'role': 'RM'},
-          {'pos': Offset(0.50, 0.20), 'role': 'ST'},
-        ];
-      } else if (formation == '3-2-1') {
-        slots = [
-          {'pos': Offset(0.50, 0.92), 'role': 'GK'},
-          {'pos': Offset(0.20, 0.73), 'role': 'LB'},
-          {'pos': Offset(0.50, 0.75), 'role': 'CB'},
-          {'pos': Offset(0.80, 0.73), 'role': 'RB'},
-          {'pos': Offset(0.35, 0.48), 'role': 'CM'},
-          {'pos': Offset(0.65, 0.48), 'role': 'CM'},
-          {'pos': Offset(0.50, 0.20), 'role': 'ST'},
-        ];
-      } else {
-        slots = [
-          {'pos': Offset(0.50, 0.92), 'role': 'GK'},
-          {'pos': Offset(0.30, 0.72), 'role': 'LB'},
-          {'pos': Offset(0.70, 0.72), 'role': 'RB'},
-          {'pos': Offset(0.30, 0.48), 'role': 'LM'},
-          {'pos': Offset(0.70, 0.48), 'role': 'RM'},
-          {'pos': Offset(0.30, 0.22), 'role': 'ST'},
-          {'pos': Offset(0.70, 0.22), 'role': 'ST'},
-        ];
-      }
-    }
-
     final double nodeSize = 46.0;
-    return List.generate(slots.length, (i) {
-      final slot = slots[i];
-      final Offset offset = slot['pos'] as Offset;
-      final String role = slot['role'] as String;
-      final player = i < players.length ? players[i] : null;
+
+    return List.generate(_pitchPositions.length, (i) {
+      final pos = _pitchPositions[i];
+      final player = i < starters.length ? starters[i] : null;
       final user = player?['users'] as Map<String, dynamic>?;
       final name = player != null
           ? '${user?['last_name'] ?? player['last_name'] ?? 'Игрок'}'
-          : role;
+          : 'Слот';
       final number = player?['jersey_number'] ?? (i + 1);
+      final isSelectedForSwap = _selectedPitchNodeIndex == i;
 
-      final double x = offset.dx * constraints.maxWidth - (nodeSize / 2);
-      final double y = offset.dy * constraints.maxHeight - (nodeSize / 2);
+      final double x = (pos.dx * constraints.maxWidth - (nodeSize / 2)).clamp(4.0, constraints.maxWidth - nodeSize - 4.0);
+      final double y = (pos.dy * constraints.maxHeight - (nodeSize / 2)).clamp(4.0, constraints.maxHeight - nodeSize - 4.0);
 
       return Positioned(
         left: x,
         top: y,
         child: GestureDetector(
+          onPanUpdate: (details) {
+            setState(() {
+              final newDx = (_pitchPositions[i].dx + details.delta.dx / constraints.maxWidth).clamp(0.06, 0.94);
+              final newDy = (_pitchPositions[i].dy + details.delta.dy / constraints.maxHeight).clamp(0.06, 0.94);
+              _pitchPositions[i] = Offset(newDx, newDy);
+            });
+          },
           onTap: () {
+            setState(() {
+              if (_selectedPitchNodeIndex == i) {
+                _selectedPitchNodeIndex = null;
+              } else {
+                _selectedPitchNodeIndex = i;
+              }
+            });
+          },
+          onDoubleTap: () {
             if (player != null) {
               final fullName = '${user?['first_name'] ?? player['first_name'] ?? ''} ${user?['last_name'] ?? player['last_name'] ?? ''}'.trim();
               _showPlayerDetailsDialog(player, fullName);
@@ -604,17 +705,24 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
                 width: nodeSize,
                 height: nodeSize,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isFutsal ? const Color(0xFFD84315) : const Color(0xFF1E88E5),
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(
+                    color: isSelectedForSwap ? const Color(0xFFFFB800) : Colors.white,
+                    width: isSelectedForSwap ? 3.5 : 2.0,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      blurRadius: 6,
+                      color: isSelectedForSwap
+                          ? const Color(0xFFFFB800).withValues(alpha: 0.6)
+                          : Colors.black.withValues(alpha: 0.4),
+                      blurRadius: isSelectedForSwap ? 12 : 6,
+                      spreadRadius: isSelectedForSwap ? 2 : 0,
                       offset: const Offset(0, 2),
                     )
                   ],
@@ -629,13 +737,17 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.75),
+                  color: isSelectedForSwap ? const Color(0xFFFFB800) : Colors.black.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  name,
+                  isSelectedForSwap ? 'ЗАМЕНА' : name,
                   maxLines: 1,
-                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: isSelectedForSwap ? Colors.black : Colors.white,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -643,6 +755,224 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
         ),
       );
     });
+  }
+
+  Widget _buildBenchBar(List<Map<String, dynamic>> bench) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141724),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: _selectedPitchNodeIndex != null
+              ? const Color(0xFFFFB800)
+              : Colors.white.withValues(alpha: 0.08),
+          width: _selectedPitchNodeIndex != null ? 1.5 : 1.0,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.chair_alt, size: 15, color: Color(0xFFFFB800)),
+                  const SizedBox(width: 5),
+                  Text(
+                    'СКАМЕЙКА ЗАПАСНЫХ (${bench.length})',
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                  ),
+                ],
+              ),
+              if (_selectedPitchNodeIndex != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFB800).withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'Нажмите на запасного для замены ↺',
+                    style: TextStyle(color: Color(0xFFFFB800), fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                )
+              else
+                const Text(
+                  'Тап по игроку на поле для замены',
+                  style: TextStyle(color: Colors.white38, fontSize: 10),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: bench.isEmpty
+                ? const Center(
+                    child: Text('Все игроки в стартовом составе', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  )
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: bench.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final p = bench[index];
+                      final user = p['users'] as Map<String, dynamic>?;
+                      final fullName = '${user?['first_name'] ?? p['first_name'] ?? ''} ${user?['last_name'] ?? p['last_name'] ?? ''}'.trim();
+                      final num = p['jersey_number'] ?? 0;
+                      final pos = p['position'] ?? 'SUB';
+                      final ovr = p['ovr'] ?? 70;
+
+                      return InkWell(
+                        onTap: () {
+                          if (_selectedPitchNodeIndex != null) {
+                            _swapPitchPlayerWithBench(_selectedPitchNodeIndex!, p['id'].toString());
+                          } else {
+                            _showPlayerDetailsDialog(p, fullName);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black38,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _selectedPitchNodeIndex != null
+                                  ? const Color(0xFFFFB800).withValues(alpha: 0.6)
+                                  : Colors.white12,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 12,
+                                backgroundColor: const Color(0xFFFFB800).withValues(alpha: 0.2),
+                                child: Text('#$num', style: const TextStyle(color: Color(0xFFFFB800), fontSize: 9.5, fontWeight: FontWeight.bold)),
+                              ),
+                              const SizedBox(width: 8),
+                              Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    fullName.isEmpty ? 'Игрок' : fullName,
+                                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                                  ),
+                                  Text(
+                                    '$pos • OVR $ovr',
+                                    style: const TextStyle(color: Colors.white38, fontSize: 9.5),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _swapPitchPlayerWithBench(int pitchIndex, String benchPlayerId) {
+    if (pitchIndex < _onPitchPlayerIds.length) {
+      setState(() {
+        _onPitchPlayerIds[pitchIndex] = benchPlayerId;
+        _selectedPitchNodeIndex = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Замена произведена успешно!'),
+          backgroundColor: Color(0xFF141724),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _exportTacticsImage(String formation) async {
+    try {
+      final boundary = _pitchBoundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return;
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
+      final pngBytes = byteData.buffer.asUint8List();
+
+      if (!mounted) return;
+      _showExportedPosterDialog(pngBytes, formation);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка экспорта схемы: $e'), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
+
+  void _showExportedPosterDialog(ui.Uint8List pngBytes, String formation) {
+    final teamName = _activeTeamName ?? 'Академия FC';
+    final dateStr = '${DateTime.now().day.toString().padLeft(2, '0')}.${DateTime.now().month.toString().padLeft(2, '0')}.${DateTime.now().year}';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF141724),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: Color(0xFFFFB800), width: 1.2),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.share, color: Color(0xFFFFB800)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('Тактический постер • $teamName', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white12),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Image.memory(pngBytes, fit: BoxFit.contain),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Схема: $formation  •  Дата: $dateStr',
+                style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Изображение сформировано в Ultra HD. Нажмите правой кнопкой мыши или удерживайте для сохранения.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          Center(
+            child: TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Закрыть', style: TextStyle(color: Color(0xFFFFB800), fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // 4. СОСТАВ И КОМАНДЫ
@@ -744,6 +1074,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                         setState(() {
                           _activeTeamId = t['id'].toString();
                           _activeTeamName = name;
+                          _onPitchPlayerIds.clear();
                         });
                       }
                     },
@@ -1018,7 +1349,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // ДИАЛОГИ И МЕТОДЫ УПРАВЛЕНИЯ
   void _openScoreEditDialog(Map<String, dynamic> match, String homeTeam, String awayTeam) {
     final homeController = TextEditingController(text: match['home_score']?.toString() ?? '0');
     final awayController = TextEditingController(text: match['away_score']?.toString() ?? '0');
@@ -1740,9 +2070,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// ОТРИСОВКА ФУТБОЛЬНОГО ПОЛЯ (ГАЗОН С ПОЛОСАМИ)
-// ---------------------------------------------------------------------------
+// ОТРИСОВКА ФУТБОЛЬНОГО ПОЛЯ
 class FootballPitchPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -1784,9 +2112,7 @@ class FootballPitchPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// ---------------------------------------------------------------------------
-// ОТРИСОВКА МИНИ-ФУТБОЛЬНОГО ПОЛЯ (ПАРКЕТ / ТЕРАФЛЕКС В ЗАЛЕ)
-// ---------------------------------------------------------------------------
+// ОТРИСОВКА МИНИ-ФУТБОЛЬНОГО ПОЛЯ
 class FutsalPitchPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -1819,7 +2145,6 @@ class FutsalPitchPainter extends CustomPainter {
 
     canvas.drawCircle(Offset(size.width / 2, size.height / 2), size.width * 0.18, linePaint);
 
-    // 6-метровые вратарские дуги
     final arcR = size.width * 0.32;
     canvas.drawArc(
       Rect.fromCircle(center: Offset(size.width / 2, pad), radius: arcR),
@@ -1836,7 +2161,6 @@ class FutsalPitchPainter extends CustomPainter {
       linePaint,
     );
 
-    // Отметки 10-метрового дабл-пенальти
     final dotPaint = Paint()..color = Colors.white.withValues(alpha: 0.85);
     canvas.drawCircle(Offset(size.width / 2, size.height * 0.28), 3.0, dotPaint);
     canvas.drawCircle(Offset(size.width / 2, size.height * 0.72), 3.0, dotPaint);

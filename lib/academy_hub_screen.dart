@@ -21,6 +21,7 @@ class AcademyHubScreen extends StatefulWidget {
 
 class _AcademyHubScreenState extends State<AcademyHubScreen> {
   int _selectedTab = 0; // 0: Таблица, 1: Календарь, 2: Состав
+  int _refreshCounter = 0; // Общий счетчик синхронизации для Таблицы и Календаря
 
   @override
   Widget build(BuildContext context) {
@@ -31,10 +32,8 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
         child: Column(
           children: [
             const SizedBox(height: 12),
-            // Внутренний сегментный переключатель вкладок
             _buildTabSelector(),
             const SizedBox(height: 12),
-            // Контент выбранной вкладки
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
@@ -125,16 +124,17 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     }
   }
 
-  // Вкладка 1: Турнирная таблица + Динамические блоки
+  // Вкладка 1: Турнирная таблица (перезапрашивает данные при изменении _refreshCounter)
   Widget _buildStandingsTab() {
     return SingleChildScrollView(
-      key: const ValueKey('tab_standings'),
+      key: ValueKey('tab_standings_$_refreshCounter'),
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TournamentStandingsWidget(
+            key: ValueKey('widget_standings_$_refreshCounter'),
             tournamentId: widget.tournamentId,
             title: 'Первенство U-10 • Золотая Лига',
             highlightTeamId: widget.myTeamId,
@@ -150,7 +150,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
   // Вкладка 2: Календарь матчей
   Widget _buildCalendarTab() {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      key: const ValueKey('tab_calendar'),
+      key: ValueKey('tab_calendar_$_refreshCounter'),
       future: Supabase.instance.client
           .from('matches')
           .select('*, home:home_team_id(name, short_name), away:away_team_id(name, short_name)')
@@ -195,26 +195,53 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        m['venue'] ?? 'Основной стадион',
-                        style: const TextStyle(color: Colors.white38, fontSize: 11),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isFinished
-                              ? Colors.white10
-                              : const Color(0xFFFFB800).withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          isFinished ? 'ЗАВЕРШЕН' : 'СКОРО',
-                          style: TextStyle(
-                            color: isFinished ? Colors.white60 : const Color(0xFFFFB800),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                      Row(
+                        children: [
+                          const Icon(Icons.stadium_outlined, size: 14, color: Colors.white38),
+                          const SizedBox(width: 4),
+                          Text(
+                            m['venue'] ?? 'Основной стадион',
+                            style: const TextStyle(color: Colors.white38, fontSize: 11),
                           ),
-                        ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isFinished
+                                  ? Colors.white10
+                                  : const Color(0xFFFFB800).withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              isFinished ? 'ЗАВЕРШЕН' : 'СКОРО',
+                              style: TextStyle(
+                                color: isFinished ? Colors.white60 : const Color(0xFFFFB800),
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: () => _openScoreEditDialog(m, homeTeam, awayTeam),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Icon(
+                                Icons.edit_note,
+                                color: Color(0xFFFFB800),
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -228,20 +255,28 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                       ),
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 14),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black38,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.white12),
-                        ),
-                        child: Text(
-                          scoreText,
-                          style: TextStyle(
-                            color: isFinished ? const Color(0xFFFFB800) : Colors.white70,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 14,
+                      GestureDetector(
+                        onTap: () => _openScoreEditDialog(m, homeTeam, awayTeam),
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 14),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black45,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isFinished
+                                  ? const Color(0xFFFFB800).withValues(alpha: 0.4)
+                                  : Colors.white12,
+                            ),
+                          ),
+                          child: Text(
+                            scoreText,
+                            style: TextStyle(
+                              color: isFinished ? const Color(0xFFFFB800) : Colors.white70,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                              letterSpacing: 1,
+                            ),
                           ),
                         ),
                       ),
@@ -263,7 +298,172 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> {
     );
   }
 
-  // Вкладка 3: Состав команды
+  void _openScoreEditDialog(Map<String, dynamic> match, String homeTeam, String awayTeam) {
+    final homeController = TextEditingController(text: match['home_score']?.toString() ?? '0');
+    final awayController = TextEditingController(text: match['away_score']?.toString() ?? '0');
+    bool isFinished = match['status'] == 'finished' || match['status'] == null;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF141724),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.sports_score, color: Color(0xFFFFB800)),
+              SizedBox(width: 8),
+              Text(
+                'Результат матча',
+                style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Text(
+                          homeTeam,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: homeController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Color(0xFFFFB800), fontSize: 24, fontWeight: FontWeight.w900),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: Colors.black38,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Text(':', style: TextStyle(color: Colors.white38, fontSize: 26, fontWeight: FontWeight.bold)),
+                  ),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Text(
+                          awayTeam,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: awayController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Color(0xFFFFB800), fontSize: 24, fontWeight: FontWeight.w900),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: Colors.black38,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                activeThumbColor: const Color(0xFFFFB800),
+                title: const Text('Матч завершен', style: TextStyle(color: Colors.white, fontSize: 13)),
+                value: isFinished,
+                onChanged: (val) => setDialogState(() => isFinished = val),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Отмена', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFB800),
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                final hScore = int.tryParse(homeController.text.trim()) ?? 0;
+                final aScore = int.tryParse(awayController.text.trim()) ?? 0;
+                final newStatus = isFinished ? 'finished' : 'scheduled';
+                final matchId = match['id'].toString();
+
+                Navigator.of(ctx).pop();
+
+                _updateMatchScore(
+                  matchId: matchId,
+                  homeScore: hScore,
+                  awayScore: aScore,
+                  status: newStatus,
+                );
+              },
+              child: const Text('Сохранить', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _updateMatchScore({
+    required String matchId,
+    required int homeScore,
+    required int awayScore,
+    required String status,
+  }) async {
+    try {
+      await Supabase.instance.client.from('matches').update({
+        'home_score': homeScore,
+        'away_score': awayScore,
+        'status': status,
+      }).eq('id', matchId);
+
+      if (!mounted) return;
+      // Мгновенно обновляем и Календарь, и Турнирную таблицу
+      setState(() => _refreshCounter++);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Результат матча обновлен и таблица пересчитана!'),
+          backgroundColor: Color(0xFF141724),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка обновления: $e'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
   Widget _buildRosterTab() {
     return FutureBuilder<List<Map<String, dynamic>>>(
       key: const ValueKey('tab_roster'),

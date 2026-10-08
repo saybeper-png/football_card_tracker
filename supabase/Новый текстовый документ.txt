@@ -14,8 +14,14 @@ Stop-Process -Id (Get-NetTCPConnection -LocalPort 8090 -ErrorAction SilentlyCont
 
 
 # Освобождаем порт при необходимости и запускаем сервер
+
+
 Stop-Process -Name dart -Force -ErrorAction SilentlyContinue
 flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080
+
+
+да ё моё сколько можно, уже час не можем реализовать механизм открытия на весь экран что за беда 
+
 
 Обновление на Netlify для работы на телефоне:
 
@@ -62,3 +68,8 @@ PowerShell
 git add .
 git commit -m "Кратко опишите, что изменили"
 git push origin main
+
+
+доработать механизм при подходе игрока к мячу кружок игрока наезжает на 1/3 на мяс, чтобы поле игрока было ативно для дальнейших дейстивй
+добавить мигание кружочка игрока если он с мячом, а когда отдает пас , мигание переходит на другого игрока с мячом
+

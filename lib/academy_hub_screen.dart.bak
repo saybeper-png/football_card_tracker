@@ -49,7 +49,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
   bool _isFullscreenTactics = false;
   bool _showHeatmap = false; 
   bool _showOpponents = true; // Отображение команды соперников
-  bool _showBall = true; // Отображение мяча на поле
 
   // Демо-режим
   bool _isDemoMode = false;
@@ -68,15 +67,15 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
   String? _activeTeamId;
   String? _activeTeamName;
 
-  String _selectedFutsalFormation = '1-2-1';
+  String _selectedFutsalFormation = '1-2-1 (Ромб)';
   String _selectedFootballFormation = '2-3-1';
 
   final List<String> _futsalFormations = [
-    '1-2-1',
-    '2-2',
-    '3-1',
-    '4-0',
-    '5-0',
+    '1-2-1 (Ромб)',
+    '2-2 (Квадрат)',
+    '3-1 (Со столбом)',
+    '4-0 (В линию)',
+    '5-0 (5-й полевой)',
   ];
 
   final List<String> _footballFormations = [
@@ -91,7 +90,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
 
   // Мяч
   Offset _ballPosition = const Offset(0.50, 0.50);
-  final List<Offset> _ballTrail = [];
+  List<Offset> _ballTrail = [];
 
   // Интерактивное перемещение игроков
   int? _activeTouchPlayerIndex;
@@ -105,14 +104,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
 
   late AnimationController _moveController;
   late AnimationController _fadeController;
-  late AnimationController _passController;
-  int? _ballPossessorIndex;
-  bool _ballPossessorIsOpponent = false;
-  int? _selectedPlayerForBall;
-  bool _selectedPlayerForBallIsOpponent = false;
-  int? _pendingPassTargetIndex;
-  bool _pendingPassTargetIsOpponent = false;
-  List<Offset> _ballPassTrail = [];
 
   Future<List<Map<String, dynamic>>>? _tacticsFuture;
   Future<List<Map<String, dynamic>>>? _calendarFuture;
@@ -134,7 +125,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
 
     _moveController = AnimationController(
       vsync: this,
-        duration: const Duration(milliseconds: 1470),
+      duration: const Duration(milliseconds: 550),
     );
 
     _moveController.addListener(() {
@@ -151,27 +142,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
           } else {
             _pitchPositions[_movingPlayerIndex!] = currentPos;
           }
-
-          // Ведение мяча (работает одинаково для синих и красных)
-          if (_ballPossessorIndex == _movingPlayerIndex && _ballPossessorIsOpponent == _movingPlayerIsOpponent) {
-            if (_checkAndHandleTackle(currentPos, isOpponent: _movingPlayerIsOpponent)) {
-              return;
-            }
-            _ballPosition = Offset(
-              (currentPos.dx + 0.024).clamp(0.04, 0.96),
-              (currentPos.dy + 0.018).clamp(0.04, 0.96),
-            );
-          }
-          // Подбегание к свободному мячу
-          else if (_showBall && _ballPossessorIndex == null && (currentPos - _ballPosition).distance < 0.045) {
-            _ballPossessorIndex = _movingPlayerIndex;
-            _ballPossessorIsOpponent = _movingPlayerIsOpponent;
-            _ballPosition = Offset(
-              (currentPos.dx + 0.024).clamp(0.04, 0.96),
-              (currentPos.dy + 0.018).clamp(0.04, 0.96),
-            );
-            _blinkController.repeat(reverse: true);
-          }
         });
       }
     });
@@ -179,101 +149,22 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
     _moveController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         if (_movingPlayerIndex != null && _activePlayerTrail.isNotEmpty) {
-          final endPos = _activePlayerTrail.last;
           setState(() {
             if (_movingPlayerIsOpponent) {
-              _opponentPositions[_movingPlayerIndex!] = endPos;
+              _opponentPositions[_movingPlayerIndex!] = _activePlayerTrail.last;
             } else {
-              _pitchPositions[_movingPlayerIndex!] = endPos;
+              _pitchPositions[_movingPlayerIndex!] = _activePlayerTrail.last;
             }
             _activeTouchPlayerIndex = null;
-
-            // Фиксация мяча у игрока после подбегания к мячу
-            if (_selectedPlayerForBall != null &&
-                _movingPlayerIndex == _selectedPlayerForBall &&
-                _movingPlayerIsOpponent == _selectedPlayerForBallIsOpponent) {
-              _ballPossessorIndex = _selectedPlayerForBall;
-              _ballPossessorIsOpponent = _selectedPlayerForBallIsOpponent;
-              _ballPosition = Offset(
-                (endPos.dx + 0.024).clamp(0.04, 0.96),
-                (endPos.dy + 0.018).clamp(0.04, 0.96),
-              );
-              _selectedPlayerForBall = null;
-              _blinkController.repeat(reverse: true);
-            } else if (_ballPossessorIndex == null && (endPos - _ballPosition).distance < 0.055) {
-              _ballPossessorIndex = _movingPlayerIndex;
-              _ballPossessorIsOpponent = _movingPlayerIsOpponent;
-              _ballPosition = Offset(
-                (endPos.dx + 0.024).clamp(0.04, 0.96),
-                (endPos.dy + 0.018).clamp(0.04, 0.96),
-              );
-              _selectedPlayerForBall = null;
-              _blinkController.repeat(reverse: true);
-            } else if (_ballPossessorIndex == _movingPlayerIndex && _ballPossessorIsOpponent == _movingPlayerIsOpponent) {
-              _ballPosition = Offset(
-                (endPos.dx + 0.024).clamp(0.04, 0.96),
-                (endPos.dy + 0.018).clamp(0.04, 0.96),
-              );
-            }
             _movingPlayerIndex = null;
           });
-          if (_ballPossessorIndex == null) {
-            _blinkController.stop();
-          }
+          _blinkController.stop();
+
           HapticFeedback.selectionClick();
           _fadeController.forward(from: 0.0);
         }
       }
     });
-
-    _passController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 650),
-    );
-    _passController.addListener(() {
-      if (_ballPassTrail.length >= 2) {
-        setState(() {
-          _ballPosition = Offset.lerp(
-            _ballPassTrail[0],
-            _ballPassTrail[1],
-            Curves.easeOutCubic.transform(_passController.value),
-          )!;
-        });
-      }
-    });
-    _passController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        if (_pendingPassTargetIndex != null) {
-          setState(() {
-            _ballPossessorIndex = _pendingPassTargetIndex;
-            _ballPossessorIsOpponent = _pendingPassTargetIsOpponent;
-            final pPos = _pendingPassTargetIsOpponent
-                ? _opponentPositions[_pendingPassTargetIndex!]
-                : _pitchPositions[_pendingPassTargetIndex!];
-            _ballPosition = Offset(
-              (pPos.dx + 0.024).clamp(0.04, 0.96),
-              (pPos.dy + 0.018).clamp(0.04, 0.96),
-            );
-            _selectedPlayerForBall = null;
-            _pendingPassTargetIndex = null;
-          });
-          _blinkController.repeat(reverse: true);
-        } else {
-          setState(() {
-            _ballPossessorIndex = null;
-            _ballPossessorIsOpponent = false;
-            _selectedPlayerForBall = null;
-            _pendingPassTargetIndex = null;
-            _activeTouchPlayerIndex = null;
-            _movingPlayerIndex = null;
-          });
-          _blinkController.stop();
-        }
-      }
-    });
-      _ballPossessorIsOpponent = false;
-      _selectedPlayerForBallIsOpponent = false;
-      _pendingPassTargetIsOpponent = false;
 
     _fadeController = AnimationController(
       vsync: this,
@@ -320,7 +211,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
     _blinkController.dispose();
     _moveController.dispose();
     _fadeController.dispose();
-    _passController.dispose();
     _demoAnimController.dispose();
     super.dispose();
   }
@@ -378,56 +268,26 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
   void _resetFormationPositions() {
     final isFutsal = _sportType == 'futsal';
     final form = isFutsal ? _selectedFutsalFormation : _selectedFootballFormation;
-
-    _moveController.stop();
-    _passController.stop();
-    _blinkController.stop();
-
     setState(() {
       _pitchPositions = _getDefaultPositions(isFutsal, form, isOpponent: false);
       _opponentPositions = _getDefaultPositions(isFutsal, form, isOpponent: true);
-      _ballPosition = const Offset(0.50, 0.50);
-
-      _ballPossessorIndex = null;
-      _ballPossessorIsOpponent = false;
-      _selectedPlayerForBallIsOpponent = false;
-      _pendingPassTargetIsOpponent = false;
-      _selectedPlayerForBall = null;
-      _pendingPassTargetIndex = null;
-
-      _activeTouchPlayerIndex = null;
-      _activeTouchIsOpponent = false;
-      _movingPlayerIndex = null;
-      _movingPlayerIsOpponent = false;
-
       _activePlayerTrail.clear();
-      _ballPassTrail.clear();
+      _ballPosition = const Offset(0.50, 0.50);
       _ballTrail.clear();
+      _activeTouchPlayerIndex = null;
+      _movingPlayerIndex = null;
+      _isDemoMode = false;
     });
-
-    HapticFeedback.lightImpact();
+    _blinkController.stop();
+    _moveController.stop();
+    _fadeController.stop();
   }
 
   void _resetBallToCenter() {
-    _passController.stop();
-
     setState(() {
-        _showBall = true;
       _ballPosition = const Offset(0.50, 0.50);
-      _ballPossessorIndex = null;
-      _ballPossessorIsOpponent = false;
-      _selectedPlayerForBallIsOpponent = false;
-      _pendingPassTargetIsOpponent = false;
-      _selectedPlayerForBall = null;
-      _pendingPassTargetIndex = null;
-      _ballPassTrail.clear();
       _ballTrail.clear();
     });
-
-    if (_movingPlayerIndex == null) {
-      _blinkController.stop();
-    }
-
     HapticFeedback.lightImpact();
   }
 
@@ -700,7 +560,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
     List<Offset> base;
     if (isFutsal) {
       switch (formation) {
-        case '2-2':
+        case '2-2 (Квадрат)':
           base = [
             const Offset(0.50, 0.88),
             const Offset(0.28, 0.65),
@@ -709,7 +569,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
             const Offset(0.72, 0.32),
           ];
           break;
-        case '3-1':
+        case '3-1 (Со столбом)':
           base = [
             const Offset(0.50, 0.88),
             const Offset(0.20, 0.64),
@@ -718,7 +578,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
             const Offset(0.50, 0.22),
           ];
           break;
-        case '4-0':
+        case '4-0 (В линию)':
           base = [
             const Offset(0.50, 0.88),
             const Offset(0.16, 0.50),
@@ -727,7 +587,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
             const Offset(0.84, 0.50),
           ];
           break;
-        case '5-0':
+        case '5-0 (5-й полевой)':
           base = [
             const Offset(0.50, 0.62),
             const Offset(0.18, 0.38),
@@ -736,7 +596,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
             const Offset(0.68, 0.20),
           ];
           break;
-        case '1-2-1':
+        case '1-2-1 (Ромб)':
         default:
           base = [
             const Offset(0.50, 0.88),
@@ -1291,250 +1151,130 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
         return Column(
           children: [
             // ПАНЕЛЬ УПРАВЛЕНИЯ
-              // ПАНЕЛЬ УПРАВЛЕНИЯ И ВЫБОРА СХЕМЫ (ЧИПСЫ + ДЕЙСТВИЯ)
-              Container(
-                margin: EdgeInsets.fromLTRB(isFullscreen ? 10 : 16, 4, isFullscreen ? 10 : 16, 6),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF141724),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // СТРОКА 1: ГОРИЗОНТАЛЬНАЯ ЛЕНТА ВСЕХ СХЕМ РАССТАНОВКИ
-                    Row(
-                      children: [
-                        const Icon(Icons.alt_route, color: Color(0xFFFFB800), size: 16),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'СХЕМА:',
-                          style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const BouncingScrollPhysics(),
-                            child: Row(
-                              children: formationsList.map((f) {
-                                final isSelected = f == currentFormation;
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 4),
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(8),
-                                    onTap: () {
-                                      HapticFeedback.selectionClick();
-                                      setState(() {
-                                        if (isFutsal) {
-                                          _selectedFutsalFormation = f;
-                                        } else {
-                                          _selectedFootballFormation = f;
-                                        }
-                                        _resetFormationPositions();
-                                      });
-                                    },
-                                    child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 200),
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? const Color(0xFFFFB800)
-                                            : const Color(0xFF1E2235),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: isSelected
-                                              ? const Color(0xFFFFB800)
-                                              : Colors.white.withValues(alpha: 0.12),
-                                        ),
-                                        boxShadow: isSelected
-                                            ? [
-                                                BoxShadow(
-                                                  color: const Color(0xFFFFB800).withValues(alpha: 0.35),
-                                                  blurRadius: 6,
-                                                )
-                                              ]
-                                            : null,
-                                      ),
-                                      child: Text(
-                                        f,
-                                        style: TextStyle(
-                                          color: isSelected ? Colors.black : Colors.white,
-                                          fontSize: 10.5,
-                                          fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 6),
-                    const Divider(color: Colors.white12, height: 1),
-                    const SizedBox(height: 4),
-
-                    // СТРОКА 2: ИНСТРУМЕНТЫ И РЕЖИМЫ ТАКТИКИ
-                    Row(
-                      children: [
-                        if (isFullscreen) ...[
-                          InkWell(
-                            borderRadius: BorderRadius.circular(6),
-                            onTap: () => setState(() => _isFullscreenTactics = false),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFB800),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.fullscreen_exit, size: 16, color: Colors.black),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                        ],
-
-                        Text(
-                          isFutsal ? '⚽ Футзал (5x5)' : '⚽ Футбол (7x7)',
-                          style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600),
-                        ),
-
-                        const SizedBox(width: 8),
-
-                        // Адаптивная горизонтальная лента кнопок управления (без overflow на телефонах)
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              physics: const BouncingScrollPhysics(),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Кнопка показать/скрыть соперников
-                                  IconButton(
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                    tooltip: _showOpponents ? 'Скрыть команду соперников' : 'Показать соперников (Красные)',
-                                    icon: Icon(
-                                      Icons.people_alt,
-                                      color: _showOpponents ? const Color(0xFFFF5252) : Colors.white60,
-                                      size: 19,
-                                    ),
-                                    onPressed: () {
-                                      HapticFeedback.lightImpact();
-                                      setState(() {
-                                        _showOpponents = !_showOpponents;
-                                        if (!_showOpponents && _ballPossessorIsOpponent) {
-                                          _ballPossessorIndex = null;
-                                          _ballPossessorIsOpponent = false;
-                                          _selectedPlayerForBall = null;
-                                          _blinkController.stop();
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  // Кнопка убрать/показать мяч на поле
-                                  IconButton(
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                    tooltip: _showBall ? 'Убрать мяч с поля' : 'Вернуть мяч на поле',
-                                    icon: Icon(
-                                      Icons.sports_soccer,
-                                      color: _showBall ? Colors.white : Colors.white38,
-                                      size: 19,
-                                    ),
-                                    onPressed: () {
-                                      HapticFeedback.lightImpact();
-                                      setState(() {
-                                        _showBall = !_showBall;
-                                        if (!_showBall) {
-                                          _ballPossessorIndex = null;
-                                          _ballPossessorIsOpponent = false;
-                                          _selectedPlayerForBall = null;
-                                          _pendingPassTargetIndex = null;
-                                          _ballPassTrail.clear();
-                                          _blinkController.stop();
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  // Демо: разбор ошибок
-                                  IconButton(
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                    tooltip: _isDemoMode ? 'Закрыть демо-режим' : 'Демо: разбор ошибок',
-                                    icon: Icon(
-                                      Icons.school,
-                                      color: _isDemoMode ? const Color(0xFFFFD54F) : Colors.white60,
-                                      size: 19,
-                                    ),
-                                    onPressed: () {
-                                      if (_isDemoMode) {
-                                        _resetFormationPositions();
-                                      } else {
-                                        _applyDemoState(scenarioIndex: 0, showCorrect: false);
-                                      }
-                                    },
-                                  ),
-                                  // Тепловая карта
-                                  IconButton(
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                    tooltip: _showHeatmap ? 'Скрыть тепловую карту' : 'Тепловая карта',
-                                    icon: Icon(
-                                      _showHeatmap ? Icons.whatshot : Icons.whatshot_outlined,
-                                      color: _showHeatmap ? const Color(0xFFFF5722) : Colors.white60,
-                                      size: 19,
-                                    ),
-                                    onPressed: () {
-                                      HapticFeedback.lightImpact();
-                                      setState(() => _showHeatmap = !_showHeatmap);
-                                    },
-                                  ),
-                                  // Мяч в центр
-                                  IconButton(
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                    tooltip: 'Мяч в центр',
-                                    icon: const Icon(Icons.sports_soccer, color: Colors.white, size: 18),
-                                    onPressed: _resetBallToCenter,
-                                  ),
-                                  // Сбросить схему
-                                  IconButton(
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                    tooltip: 'Сбросить схему',
-                                    icon: const Icon(Icons.refresh, color: Colors.white70, size: 18),
-                                    onPressed: _resetFormationPositions,
-                                  ),
-                                  if (!isFullscreen)
-                                    IconButton(
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                                      tooltip: 'Развернуть на весь экран',
-                                      icon: const Icon(Icons.fullscreen, color: Color(0xFFFFB800), size: 21),
-                                      onPressed: () => setState(() => _isFullscreenTactics = true),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+            Container(
+              margin: EdgeInsets.fromLTRB(isFullscreen ? 10 : 16, 4, isFullscreen ? 10 : 16, 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF141724),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
               ),
+              child: Row(
+                children: [
+                  if (isFullscreen) ...[
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFB800),
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () => setState(() => _isFullscreenTactics = false),
+                      icon: const Icon(Icons.fullscreen_exit, size: 20),
+                      label: const Text('', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+
+                  const Icon(Icons.alt_route, color: Color(0xFFFFB800), size: 16),
+                  const SizedBox(width: 6),
+                  const Text('Схема:', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 8),
+
+                  Expanded(
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: currentFormation,
+                        isExpanded: true,
+                        dropdownColor: const Color(0xFF181C2E),
+                        icon: const Icon(Icons.arrow_drop_down, color: Color(0xFFFFB800)),
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        items: formationsList.map((f) => DropdownMenuItem(
+                          value: f,
+                          child: Text(f),
+                        )).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() {
+                              if (isFutsal) {
+                                _selectedFutsalFormation = val;
+                              } else {
+                                _selectedFootballFormation = val;
+                              }
+                              _resetFormationPositions();
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+
+                  // КНОПКА ПОКАЗАТЬ/СКРЫТЬ СОПЕРНИКОВ
+                  IconButton(
+                    tooltip: _showOpponents ? 'Скрыть команду соперников' : 'Показать команду соперников (Красные)',
+                    icon: Icon(
+                      Icons.people_alt,
+                      color: _showOpponents ? const Color(0xFFFF5252) : Colors.white60,
+                      size: 21,
+                    ),
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      setState(() => _showOpponents = !_showOpponents);
+                    },
+                  ),
+
+                  // КНОПКА ДЕМО-РЕЖИМА
+                  IconButton(
+                    tooltip: _isDemoMode ? 'Закрыть демо-режим' : 'Демо: разбор частых ошибок и скучивания',
+                    icon: Icon(
+                      Icons.school,
+                      color: _isDemoMode ? const Color(0xFFFFD54F) : Colors.white60,
+                      size: 21,
+                    ),
+                    onPressed: () {
+                      if (_isDemoMode) {
+                        _resetFormationPositions();
+                      } else {
+                        _applyDemoState(scenarioIndex: 0, showCorrect: false);
+                      }
+                    },
+                  ),
+
+                  // КНОПКА ТЕПЛОВОЙ КАРТЫ
+                  IconButton(
+                    tooltip: _showHeatmap ? 'Скрыть тепловую карту' : 'Тепловая карта и зоны ответственности',
+                    icon: Icon(
+                      _showHeatmap ? Icons.whatshot : Icons.whatshot_outlined,
+                      color: _showHeatmap ? const Color(0xFFFF5722) : Colors.white60,
+                      size: 21,
+                    ),
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      setState(() => _showHeatmap = !_showHeatmap);
+                    },
+                  ),
+
+                  IconButton(
+                    tooltip: 'Мяч в центр',
+                    icon: const Icon(Icons.sports_soccer, color: Colors.white, size: 19),
+                    onPressed: _resetBallToCenter,
+                  ),
+
+                  IconButton(
+                    tooltip: 'Сбросить схему',
+                    icon: const Icon(Icons.refresh, color: Colors.white70, size: 18),
+                    onPressed: _resetFormationPositions,
+                  ),
+
+                  if (!isFullscreen)
+                    IconButton(
+                      tooltip: 'Развернуть на весь экран',
+                      icon: const Icon(Icons.fullscreen, color: Color(0xFFFFB800), size: 22),
+                      onPressed: () => setState(() => _isFullscreenTactics = true),
+                    ),
+                ],
+              ),
+            ),
 
             // ПАНЕЛЬ ПЕРЕКЛЮЧЕНИЯ ДЕМОНСТРАЦИОННОГО РЕЖИМА
             if (_isDemoMode)
@@ -1671,14 +1411,12 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
                               size: Size(constraints.maxWidth, constraints.maxHeight),
                               painter: TrajectoryPainter(
                                 playerTrail: _activePlayerTrail,
-                  passTrail: _ballPassTrail,
                                 ballTrail: _ballTrail,
                                 trailAlpha: fadeAlpha,
                               ),
                             ),
 
                             // 5. Фишки Нашей команды (Синие)
-                            _buildDraggableBallNode(constraints: constraints),
                             ..._buildTeamPlayerNodes(
                               constraints: constraints,
                               positions: _pitchPositions,
@@ -1696,6 +1434,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
                               ),
 
                             // 7. Мяч
+                            _buildDraggableBallNode(constraints: constraints),
 
                             // 8. Поясняющая плашка в демо-режиме
                             if (_isDemoMode)
@@ -1730,12 +1469,26 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(10),
                                   onTap: () => setState(() => _isFullscreenTactics = !_isFullscreenTactics),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(7),
-                                    child: Icon(
-                                      isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
-                                      color: isFullscreen ? Colors.black : const Color(0xFFFFB800),
-                                      size: 18,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                                          color: isFullscreen ? Colors.black : const Color(0xFFFFB800),
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          isFullscreen ? '' : 'На весь экран',
+                                          style: TextStyle(
+                                            color: isFullscreen ? Colors.black : Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -1820,176 +1573,35 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
   }
 
   // МЯЧ
-  // Взаимная проверка отбора мяча при сближении (для синих и красных)
-  // Взаимная проверка отбора мяча при сближении (для синих и красных)
-  bool _checkAndHandleTackle(Offset currentPos, {required bool isOpponent}) {
-    if (_ballPossessorIndex == null) return false;
-    if (!isOpponent && !_showOpponents) return false;
-    const double tackleRadius = 0.048;
-
-    final opposingPositions = isOpponent ? _pitchPositions : _opponentPositions;
-
-    for (int j = 0; j < opposingPositions.length; j++) {
-      final oppPos = opposingPositions[j];
-      if ((currentPos - oppPos).distance < tackleRadius) {
-        _ballPosition = Offset(
-          (oppPos.dx + 0.024).clamp(0.04, 0.96),
-          (oppPos.dy + 0.018).clamp(0.04, 0.96),
-        );
-        // Мяч полноценно переходит отобравшему игроку
-        _ballPossessorIndex = j;
-        _ballPossessorIsOpponent = !isOpponent;
-        _selectedPlayerForBall = null;
-        _activeTouchPlayerIndex = null;
-        _activePlayerTrail.clear();
-        _blinkController.repeat(reverse: true);
-
-        if (_movingPlayerIndex != null) {
-          _movingPlayerIndex = null;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _moveController.stop();
-          });
-        }
-
-        HapticFeedback.heavyImpact();
-        if (mounted) {
-          ScaffoldMessenger.of(context).removeCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(isOpponent
-                  ? '⚠️ Отбор мяча! Наш игрок чисто отобрал мяч у соперника.'
-                  : '⚠️ Отбор мяча! Соперник чисто отобрал мяч при сближении.'),
-              duration: const Duration(milliseconds: 1500),
-              backgroundColor: const Color(0xFFD32F2F),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // Передача мяча между игроками с перехватом защитниками противоположной команды
-  void _passBallToPlayer(int targetIndex, {required bool isOpponent}) {
-    if (_ballPossessorIndex == null ||
-        _ballPossessorIsOpponent != isOpponent ||
-        _ballPossessorIndex == targetIndex) {
-      return;
-    }
-
-    final startPos = _ballPosition;
-    final targetCenter = isOpponent ? _opponentPositions[targetIndex] : _pitchPositions[targetIndex];
-    final endPos = Offset(
-      (targetCenter.dx + 0.024).clamp(0.04, 0.96),
-      (targetCenter.dy + 0.018).clamp(0.04, 0.96),
-    );
-
-    final v = endPos - startPos;
-    final lengthSq = v.dx * v.dx + v.dy * v.dy;
-
-    int? interceptingIndex;
-    double minT = 1.0;
-    Offset interceptPos = endPos;
-
-    // Защитники противоположной команды
-    final defenders = isOpponent ? _pitchPositions : (_showOpponents ? _opponentPositions : const <Offset>[]);
-
-    if (lengthSq > 0.0001) {
-      const double interceptionRadius = 0.048;
-      for (int j = 0; j < defenders.length; j++) {
-        final defPos = defenders[j];
-        final w = defPos - startPos;
-        final t = (w.dx * v.dx + w.dy * v.dy) / lengthSq;
-
-        if (t > 0.06 && t < 0.94) {
-          final projPoint = Offset(startPos.dx + t * v.dx, startPos.dy + t * v.dy);
-          final distanceToLine = (defPos - projPoint).distance;
-
-          if (distanceToLine < interceptionRadius && t < minT) {
-            minT = t;
-            interceptingIndex = j;
-            interceptPos = Offset(
-              (defPos.dx + 0.024).clamp(0.04, 0.96),
-              (defPos.dy + 0.018).clamp(0.04, 0.96),
-            );
-          }
-        }
-      }
-    }
-
-    final bool isIntercepted = interceptingIndex != null;
-
-    setState(() {
-      _ballPassTrail = [startPos, interceptPos];
-      // При перехвате адресатом становится сам перехвативший защитник
-      _pendingPassTargetIndex = isIntercepted ? interceptingIndex : targetIndex;
-      _pendingPassTargetIsOpponent = isIntercepted ? !isOpponent : isOpponent;
-
-      _ballPossessorIndex = null;
-      _ballPossessorIsOpponent = false;
-      _selectedPlayerForBall = null;
-      _activeTouchPlayerIndex = null;
-      _movingPlayerIndex = null;
-    });
-
-    _blinkController.stop();
-    _passController.forward(from: 0.0);
-
-    if (isIntercepted) {
-      HapticFeedback.heavyImpact();
-      ScaffoldMessenger.of(context).removeCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isOpponent
-              ? '⚠️ Перехват! Наш защитник перехватил передачу соперника.'
-              : '⚠️ Перехват! Защитник соперника заблокировал передачу.'),
-          duration: const Duration(milliseconds: 1500),
-          backgroundColor: const Color(0xFFD32F2F),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } else {
-      HapticFeedback.lightImpact();
-    }
-  }
   Widget _buildDraggableBallNode({required BoxConstraints constraints}) {
-    if (!_showBall) return const SizedBox.shrink();
-    const double ballSize = 24.0;
-    final double x = (_ballPosition.dx * constraints.maxWidth) - (ballSize / 2);
-    final double y = (_ballPosition.dy * constraints.maxHeight) - (ballSize / 2);
+    const double ballSize = 34.0;
+    final double x = (_ballPosition.dx * constraints.maxWidth - (ballSize / 2)).clamp(4.0, constraints.maxWidth - ballSize - 4.0);
+    final double y = (_ballPosition.dy * constraints.maxHeight - (ballSize / 2)).clamp(4.0, constraints.maxHeight - ballSize - 4.0);
 
     return Positioned(
       left: x,
       top: y,
       child: MouseRegion(
-        cursor: SystemMouseCursors.click,
+        cursor: SystemMouseCursors.grab,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: () {
-            // Мяч нельзя двигать самому: игрок подбегает и берет мяч
-            if (_selectedPlayerForBall != null) {
-              final pIdx = _selectedPlayerForBall!;
-              final isOpp = _selectedPlayerForBallIsOpponent;
-              final pPos = isOpp ? _opponentPositions[pIdx] : _pitchPositions[pIdx];
-              final delta = _ballPosition - pPos;
-              final dist = delta.distance;
-              final targetPos = dist > 0.04
-                  ? Offset(
-                      (_ballPosition.dx - (delta.dx / dist) * 0.028).clamp(0.04, 0.96),
-                      (_ballPosition.dy - (delta.dy / dist) * 0.022).clamp(0.04, 0.96),
-                    )
-                  : pPos;
-              setState(() {
-                _movingPlayerIndex = pIdx;
-                _movingPlayerIsOpponent = isOpp;
-                _activePlayerTrail = [pPos, targetPos];
-                _ballPassTrail.clear();
-              });
-              _moveController.forward(from: 0.0);
-              HapticFeedback.mediumImpact();
-            }
+          onPanStart: (details) {
+            HapticFeedback.lightImpact();
+            setState(() {
+              _ballTrail = [_ballPosition];
+            });
+          },
+          onPanUpdate: (details) {
+            setState(() {
+              final double newDx = (_ballPosition.dx + details.delta.dx / constraints.maxWidth).clamp(0.04, 0.96);
+              final double newDy = (_ballPosition.dy + details.delta.dy / constraints.maxHeight).clamp(0.04, 0.96);
+              final newPos = Offset(newDx, newDy);
+              _ballPosition = newPos;
+
+              if (_ballTrail.isEmpty || (_ballTrail.last - newPos).distance > 0.01) {
+                _ballTrail.add(newPos);
+              }
+            });
           },
           child: Container(
             width: ballSize,
@@ -1997,11 +1609,12 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.white,
+              border: Border.all(color: const Color(0xFFFFB800), width: 2.2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
+                  color: Colors.black.withValues(alpha: 0.7),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
@@ -2041,8 +1654,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
       final bool isTouching = _activeTouchPlayerIndex == i && _activeTouchIsOpponent == isOpponent;
       final bool isMoving = _movingPlayerIndex == i && _movingPlayerIsOpponent == isOpponent;
       final bool isActive = isTouching || isMoving;
-        final bool isSelected = _selectedPlayerForBall == i && _selectedPlayerForBallIsOpponent == isOpponent;
-        final bool hasBall = _ballPossessorIndex == i && _ballPossessorIsOpponent == isOpponent;
 
       return Positioned(
         left: x,
@@ -2051,21 +1662,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
           cursor: SystemMouseCursors.grab,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-              onTap: () {
-                // Если мяч у этой команды и у другого игрока — отдаем пас
-                if (_ballPossessorIndex != null && _ballPossessorIsOpponent == isOpponent) {
-                  if (_ballPossessorIndex != i) {
-                    _passBallToPlayer(i, isOpponent: isOpponent);
-                  }
-                } else {
-                  // Выбираем фишку для бега к мячу
-                  setState(() {
-                    _selectedPlayerForBall = i;
-                    _selectedPlayerForBallIsOpponent = isOpponent;
-                  });
-                  HapticFeedback.selectionClick();
-                }
-              },
             onPanDown: (_) {
               if (_moveController.isAnimating) return;
               HapticFeedback.mediumImpact();
@@ -2087,29 +1683,11 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
               final double nextDy = (currentFingerPoint.dy + details.delta.dy / constraints.maxHeight).clamp(0.04, 0.96);
               final nextPos = Offset(nextDx, nextDy);
 
-                // Если игрок ведет мяч — двигаем мяч синхронно за пальцем
-                if (_ballPossessorIndex == i && _ballPossessorIsOpponent == isOpponent) {
-                  _ballPosition = Offset(
-                    (nextPos.dx + 0.024).clamp(0.04, 0.96),
-                    (nextPos.dy + 0.018).clamp(0.04, 0.96),
-                  );
-                }
-                // Если игрока притянули к свободному мячу — захват
-                else if (_showBall && _ballPossessorIndex == null && (nextPos - _ballPosition).distance < 0.045) {
-                  _ballPossessorIndex = i;
-                  _ballPossessorIsOpponent = isOpponent;
-                  _ballPosition = Offset(
-                    (nextPos.dx + 0.024).clamp(0.04, 0.96),
-                    (nextPos.dy + 0.018).clamp(0.04, 0.96),
-                  );
-                  _blinkController.repeat(reverse: true);
-                }
-
-                setState(() {
-                  if (_activePlayerTrail.isEmpty) {
+              setState(() {
+                if (_activePlayerTrail.isEmpty) {
                   _activePlayerTrail = [positions[i], nextPos];
                 } else {
-                  if ((_activePlayerTrail.last - nextPos).distance > 0.008) {
+                  if ((_activePlayerTrail.last - nextPos).distance > 0.015) {
                     _activePlayerTrail.add(nextPos);
                   }
                 }
@@ -2166,17 +1744,12 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
                         shape: BoxShape.circle,
                         color: circleColor,
                         border: Border.all(
-                            color: isSelected ? const Color(0xFFFFD700) : (isActive ? Colors.white : (isOpponent ? const Color(0xFFFFCDD2) : Colors.white.withValues(alpha: 0.9))),
-                            width: isSelected ? 3.2 : (isActive ? 2.6 : 1.8),
+                          color: isActive
+                              ? Colors.white
+                              : (isOpponent ? const Color(0xFFFFCDD2) : Colors.white.withValues(alpha: 0.9)),
+                          width: isActive ? 2.6 : 1.8,
                         ),
                         boxShadow: [
-                            if (isSelected)
-                              BoxShadow(
-                                color: const Color(0xFFFFD700).withValues(alpha: 0.85),
-                                blurRadius: 12.0,
-                                spreadRadius: 3.5,
-                              )
-                            else
                           BoxShadow(
                             color: isActive
                                 ? (isOpponent
@@ -2190,37 +1763,15 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
                         ],
                       ),
                       alignment: Alignment.center,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            if (hasBall)
-                              Container(
-                                width: 14.0,
-                                height: 14.0,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: const Color(0xFFFFD700).withValues(alpha: 0.25 + _blinkAnimation.value * 0.70),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFFFFD700).withValues(alpha: _blinkAnimation.value * 0.85),
-                                      blurRadius: 4.0 + _blinkAnimation.value * 5.0,
-                                      spreadRadius: 1.5 + _blinkAnimation.value * 2.0,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            Text(
-                              numberText,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 10.5,
-                                shadows: hasBall ? const [Shadow(color: Colors.black, blurRadius: 4)] : null,
-                              ),
-                            ),
-                          ],
+                      child: Text(
+                        numberText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 10.5,
                         ),
                       ),
+                    ),
                     const SizedBox(height: 2),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -2747,28 +2298,11 @@ class HeatmapZonesPainter extends CustomPainter {
 
 // ПУНКТИР СО СТРЕЛКОЙ
 class TrajectoryPainter extends CustomPainter {
-  final List<Offset> passTrail;
-  Path _createSmoothPath(List<Offset> pts, Size size) {
-    final path = Path();
-    if (pts.isEmpty) return path;
-    final scaled = pts.map((p) => Offset(p.dx * size.width, p.dy * size.height)).toList();
-    path.moveTo(scaled[0].dx, scaled[0].dy);
-    if (scaled.length == 1) return path;
-    for (int i = 0; i < scaled.length - 1; i++) {
-      final p0 = scaled[i];
-      final p1 = scaled[i + 1];
-      final mid = Offset((p0.dx + p1.dx) / 2, (p0.dy + p1.dy) / 2);
-      path.quadraticBezierTo(p0.dx, p0.dy, mid.dx, mid.dy);
-    }
-    path.lineTo(scaled.last.dx, scaled.last.dy);
-    return path;
-  }
   final List<Offset> playerTrail;
   final List<Offset> ballTrail;
   final double trailAlpha;
 
   TrajectoryPainter({
-    this.passTrail = const [],
     required this.playerTrail,
     this.ballTrail = const [],
     this.trailAlpha = 1.0,
@@ -2781,19 +2315,35 @@ class TrajectoryPainter extends CustomPainter {
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..strokeMiterLimit = 1.0;
+      ..strokeCap = StrokeCap.round;
 
     final arrowPaint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
 
-    // final pxPoints = points
-    // .map((p) => Offset(p.dx * size.width, p.dy * size.height))
-    // .toList();
+    final pxPoints = points
+        .map((p) => Offset(p.dx * size.width, p.dy * size.height))
+        .toList();
 
-    final path = _createSmoothPath(points, size);
+    final path = Path();
+    path.moveTo(pxPoints.first.dx, pxPoints.first.dy);
+
+    if (pxPoints.length == 2) {
+      path.lineTo(pxPoints.last.dx, pxPoints.last.dy);
+    } else {
+      for (int i = 0; i < pxPoints.length - 1; i++) {
+        final p0 = i == 0 ? pxPoints[0] : pxPoints[i - 1];
+        final p1 = pxPoints[i];
+        final p2 = pxPoints[i + 1];
+        final p3 = (i + 2 < pxPoints.length) ? pxPoints[i + 2] : p2;
+
+        final c1 = p1 + (p2 - p0) * (1.0 / 6.0);
+        final c2 = p2 - (p3 - p1) * (1.0 / 6.0);
+
+        path.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
+      }
+    }
+
     final dashedPath = Path();
     const double dashWidth = 8.0;
     const double dashSpace = 5.0;
@@ -2840,31 +2390,6 @@ class TrajectoryPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (passTrail.length >= 2) {
-      final pPaint = Paint()
-        ..color = const Color(0xFFFFEB3B).withValues(alpha: 0.45)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0
-        ..strokeCap = StrokeCap.round;
-
-      final p1 = Offset(passTrail[0].dx * size.width, passTrail[0].dy * size.height);
-      final p2 = Offset(passTrail[1].dx * size.width, passTrail[1].dy * size.height);
-      final totalDist = (p2 - p1).distance;
-
-      if (totalDist > 0) {
-        final dir = (p2 - p1) / totalDist;
-        const double dashLen = 7.0;
-        const double spaceLen = 5.0;
-        double cur = 0.0;
-        while (cur < totalDist) {
-          final segStart = p1 + dir * cur;
-          final segLen = (cur + dashLen <= totalDist) ? dashLen : (totalDist - cur);
-          final segEnd = segStart + dir * segLen;
-          canvas.drawLine(segStart, segEnd, pPaint);
-          cur += dashLen + spaceLen;
-        }
-      }
-    }
     if (playerTrail.length >= 2 && trailAlpha > 0.01) {
       final Color playerLineColor = const Color(0xFFFFD54F).withValues(alpha: 0.95 * trailAlpha);
       _drawDashedSpline(canvas, size, playerTrail, playerLineColor);

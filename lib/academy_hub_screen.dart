@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,6 +42,22 @@ class AcademyHubScreen extends StatefulWidget {
 
   @override
   State<AcademyHubScreen> createState() => _AcademyHubScreenState();
+}
+
+class _PlayerRunState {
+  final int index;
+  final bool isOpponent;
+  final List<Offset> trail;
+  final DateTime startTime;
+  final int durationMs;
+
+  _PlayerRunState({
+    required this.index,
+    required this.isOpponent,
+    required this.trail,
+    required this.startTime,
+    this.durationMs = 1470,
+  });
 }
 
 class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProviderStateMixin {
@@ -94,11 +111,42 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
   final List<Offset> _ballTrail = [];
 
   // Интерактивное перемещение игроков
-  int? _activeTouchPlayerIndex;
-  bool _activeTouchIsOpponent = false;
   int? _movingPlayerIndex;
-  bool _movingPlayerIsOpponent = false;
   List<Offset> _activePlayerTrail = [];
+  final Map<String, _PlayerRunState> _runningPlayers = {};
+  // --- РЕЖИМ МАТЧА (MATCH ENGINE) ---
+  bool _isMatchMode = false;
+  bool _showAnalyticsLayer = false;
+  bool _showPitchControlLayer = false;
+  bool _enableTacticalAI = true;
+  int _aiDecisionTicks = 0;
+  int? _lastPasserIndex;
+  bool _lastPasserIsOpponent = false;
+  int _passIgnoreTicks = 0;
+  DateTime? _pitchPointerDownTime;
+  Offset? _pitchPointerDownPos;
+  int _blueScore = 0;
+  int _redScore = 0;
+  double _blueXG = 0.0;
+  double _redXG = 0.0;
+  int _bluePossessionTicks = 1;
+  int _redPossessionTicks = 1;
+  String _matchTelemetryText = 'Готовность к матчу • xG и телеметрия активны';
+  int _matchSeconds = 300;
+  bool _isMatchTimerActive = false;
+  Timer? _matchTicker;
+  int _matchPhysicsCounter = 0;
+  bool _showGoalBanner = false;
+  String _goalScorerText = '';
+  Offset? _freeBallVelocity;
+  bool _lastShotByOpponent = false;
+  DateTime _lastTackleTime = DateTime.now();
+  final Map<String, Offset> _prevPlayerPositions = {};
+  final Map<String, Offset> _playerHeadings = {};
+  final Map<String, List<Offset>> _playerTrails = {};
+  final Set<String> _activeTouchPlayerKeys = {};
+
+  String _playerKey(int index, bool isOpponent) => '${isOpponent ? "opp" : "team"}_$index';
   
   late AnimationController _blinkController;
   late Animation<double> _blinkAnimation;
@@ -122,6 +170,105 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
   @override
   void initState() {
     super.initState();
+
+    _moveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1470),
+    );
+
+    _moveController.addListener(() {
+      if (_runningPlayers.isEmpty) {
+        if (_moveController.isAnimating) _moveController.stop();
+        return;
+      }
+
+      final now = DateTime.now();
+      final finishedKeys = <String>[];
+
+      setState(() {
+        for (final entry in _runningPlayers.entries) {
+          final runner = entry.value;
+          final elapsed = now.difference(runner.startTime).inMilliseconds;
+          final linearProgress = (elapsed / runner.durationMs).clamp(0.0, 1.0);
+          final curveProgress = Curves.easeInOutCubic.transform(linearProgress);
+
+          final currentPos = _samplePathPoint(runner.trail, curveProgress);
+
+          if (runner.isOpponent) {
+            if (runner.index < _opponentPositions.length) {
+              _opponentPositions[runner.index] = currentPos;
+            }
+          } else {
+            if (runner.index < _pitchPositions.length) {
+              _pitchPositions[runner.index] = currentPos;
+            }
+          }
+
+          if (_ballPossessorIndex == runner.index && _ballPossessorIsOpponent == runner.isOpponent) {
+            if (!_checkAndHandleTackle(currentPos, isOpponent: runner.isOpponent)) {
+              _ballPosition = _getDribbleBallPosition(currentPos, runner.isOpponent);
+            }
+          } else if (_showBall && _ballPossessorIndex == null && (currentPos - _ballPosition).distance < 0.045) {
+            _ballPossessorIndex = runner.index;
+            _ballPossessorIsOpponent = runner.isOpponent;
+            _ballPosition = _getDribbleBallPosition(currentPos, runner.isOpponent);
+            _blinkController.repeat(reverse: true);
+          }
+
+          if (linearProgress >= 1.0) {
+            finishedKeys.add(entry.key);
+          }
+        }
+
+        for (final key in finishedKeys) {
+          final runner = _runningPlayers.remove(key)!;
+          final endPos = runner.trail.last;
+
+          if (runner.isOpponent) {
+            if (runner.index < _opponentPositions.length) {
+              _opponentPositions[runner.index] = endPos;
+            }
+          } else {
+            if (runner.index < _pitchPositions.length) {
+              _pitchPositions[runner.index] = endPos;
+            }
+          }
+
+          if (_selectedPlayerForBall != null &&
+              runner.index == _selectedPlayerForBall &&
+              runner.isOpponent == _selectedPlayerForBallIsOpponent) {
+            _ballPossessorIndex = _selectedPlayerForBall;
+            _ballPossessorIsOpponent = _selectedPlayerForBallIsOpponent;
+            _ballPosition = _getDribbleBallPosition(endPos, runner.isOpponent);
+            _selectedPlayerForBall = null;
+            _blinkController.repeat(reverse: true);
+          } else if (_ballPossessorIndex == null && (endPos - _ballPosition).distance < 0.055) {
+            _ballPossessorIndex = runner.index;
+            _ballPossessorIsOpponent = runner.isOpponent;
+            _ballPosition = _getDribbleBallPosition(endPos, runner.isOpponent);
+            _selectedPlayerForBall = null;
+            _blinkController.repeat(reverse: true);
+          } else if (_ballPossessorIndex == runner.index && _ballPossessorIsOpponent == runner.isOpponent) {
+            _ballPosition = _getDribbleBallPosition(endPos, runner.isOpponent);
+          }
+
+          _playerTrails.remove(key);
+        }
+      });
+
+      if (finishedKeys.isNotEmpty) {
+        HapticFeedback.selectionClick();
+        _fadeController.forward(from: 0.0);
+      }
+
+      if (_runningPlayers.isEmpty) {
+        _moveController.stop();
+        _movingPlayerIndex = null;
+        if (_ballPossessorIndex == null) {
+          _blinkController.stop();
+        }
+      }
+    });
     _activeTeamId = widget.myTeamId;
 
     _blinkController = AnimationController(
@@ -132,100 +279,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
       CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut),
     );
 
-    _moveController = AnimationController(
-      vsync: this,
-        duration: const Duration(milliseconds: 1470),
-    );
-
-    _moveController.addListener(() {
-      if (_movingPlayerIndex != null && _activePlayerTrail.length >= 2) {
-        final double curveProgress = CurvedAnimation(
-          parent: _moveController,
-          curve: Curves.easeInOutCubic,
-        ).value;
-
-        final currentPos = _samplePathPoint(_activePlayerTrail, curveProgress);
-        setState(() {
-          if (_movingPlayerIsOpponent) {
-            _opponentPositions[_movingPlayerIndex!] = currentPos;
-          } else {
-            _pitchPositions[_movingPlayerIndex!] = currentPos;
-          }
-
-          // Ведение мяча (работает одинаково для синих и красных)
-          if (_ballPossessorIndex == _movingPlayerIndex && _ballPossessorIsOpponent == _movingPlayerIsOpponent) {
-            if (_checkAndHandleTackle(currentPos, isOpponent: _movingPlayerIsOpponent)) {
-              return;
-            }
-            _ballPosition = Offset(
-              (currentPos.dx + 0.024).clamp(0.04, 0.96),
-              (currentPos.dy + 0.018).clamp(0.04, 0.96),
-            );
-          }
-          // Подбегание к свободному мячу
-          else if (_showBall && _ballPossessorIndex == null && (currentPos - _ballPosition).distance < 0.045) {
-            _ballPossessorIndex = _movingPlayerIndex;
-            _ballPossessorIsOpponent = _movingPlayerIsOpponent;
-            _ballPosition = Offset(
-              (currentPos.dx + 0.024).clamp(0.04, 0.96),
-              (currentPos.dy + 0.018).clamp(0.04, 0.96),
-            );
-            _blinkController.repeat(reverse: true);
-          }
-        });
-      }
-    });
-
-    _moveController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        if (_movingPlayerIndex != null && _activePlayerTrail.isNotEmpty) {
-          final endPos = _activePlayerTrail.last;
-          setState(() {
-            if (_movingPlayerIsOpponent) {
-              _opponentPositions[_movingPlayerIndex!] = endPos;
-            } else {
-              _pitchPositions[_movingPlayerIndex!] = endPos;
-            }
-            _activeTouchPlayerIndex = null;
-
-            // Фиксация мяча у игрока после подбегания к мячу
-            if (_selectedPlayerForBall != null &&
-                _movingPlayerIndex == _selectedPlayerForBall &&
-                _movingPlayerIsOpponent == _selectedPlayerForBallIsOpponent) {
-              _ballPossessorIndex = _selectedPlayerForBall;
-              _ballPossessorIsOpponent = _selectedPlayerForBallIsOpponent;
-              _ballPosition = Offset(
-                (endPos.dx + 0.024).clamp(0.04, 0.96),
-                (endPos.dy + 0.018).clamp(0.04, 0.96),
-              );
-              _selectedPlayerForBall = null;
-              _blinkController.repeat(reverse: true);
-            } else if (_ballPossessorIndex == null && (endPos - _ballPosition).distance < 0.055) {
-              _ballPossessorIndex = _movingPlayerIndex;
-              _ballPossessorIsOpponent = _movingPlayerIsOpponent;
-              _ballPosition = Offset(
-                (endPos.dx + 0.024).clamp(0.04, 0.96),
-                (endPos.dy + 0.018).clamp(0.04, 0.96),
-              );
-              _selectedPlayerForBall = null;
-              _blinkController.repeat(reverse: true);
-            } else if (_ballPossessorIndex == _movingPlayerIndex && _ballPossessorIsOpponent == _movingPlayerIsOpponent) {
-              _ballPosition = Offset(
-                (endPos.dx + 0.024).clamp(0.04, 0.96),
-                (endPos.dy + 0.018).clamp(0.04, 0.96),
-              );
-            }
-            _movingPlayerIndex = null;
-          });
-          if (_ballPossessorIndex == null) {
-            _blinkController.stop();
-          }
-          HapticFeedback.selectionClick();
-          _fadeController.forward(from: 0.0);
-        }
-      }
-    });
-
+    _movingPlayerIndex = null; _runningPlayers.clear(); _playerTrails.clear(); _activeTouchPlayerKeys.clear();
     _passController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 650),
@@ -251,8 +305,8 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
                 ? _opponentPositions[_pendingPassTargetIndex!]
                 : _pitchPositions[_pendingPassTargetIndex!];
             _ballPosition = Offset(
-              (pPos.dx + 0.024).clamp(0.04, 0.96),
-              (pPos.dy + 0.018).clamp(0.04, 0.96),
+              (pPos.dx + 0.052).clamp(0.04, 0.96),
+              (pPos.dy + 0.016).clamp(0.04, 0.96),
             );
             _selectedPlayerForBall = null;
             _pendingPassTargetIndex = null;
@@ -264,7 +318,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
             _ballPossessorIsOpponent = false;
             _selectedPlayerForBall = null;
             _pendingPassTargetIndex = null;
-            _activeTouchPlayerIndex = null;
             _movingPlayerIndex = null;
           });
           _blinkController.stop();
@@ -322,6 +375,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
     _fadeController.dispose();
     _passController.dispose();
     _demoAnimController.dispose();
+        _matchTicker?.cancel();
     super.dispose();
   }
 
@@ -395,10 +449,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
       _selectedPlayerForBall = null;
       _pendingPassTargetIndex = null;
 
-      _activeTouchPlayerIndex = null;
-      _activeTouchIsOpponent = false;
       _movingPlayerIndex = null;
-      _movingPlayerIsOpponent = false;
 
       _activePlayerTrail.clear();
       _ballPassTrail.clear();
@@ -924,48 +975,68 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: List.generate(tabs.length, (index) {
-            final isSelected = _selectedTab == index;
-            final tab = tabs[index];
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Row(
+        children: List.generate(tabs.length, (index) {
+          final isSelected = _selectedTab == index;
+          final tab = tabs[index];
+          return Expanded(
+            flex: isSelected ? 3 : 1,
+            child: Tooltip(
+              message: tab['title'] as String,
               child: GestureDetector(
-                onTap: () => setState(() => _selectedTab = index),
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _selectedTab = index);
+                },
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeInOut,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
                     color: isSelected ? const Color(0xFFFFB800) : Colors.transparent,
                     borderRadius: BorderRadius.circular(10),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFFFFB800).withValues(alpha: 0.35),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        isSelected ? (tab['selectedIcon'] as IconData) : (tab['icon'] as IconData),
-                        size: 15,
+                        isSelected ? tab['selectedIcon'] as IconData : tab['icon'] as IconData,
+                        size: 17,
                         color: isSelected ? Colors.black : Colors.white60,
                       ),
-                      const SizedBox(width: 5),
-                      Text(
-                        tab['title'] as String,
-                        style: TextStyle(
-                          color: isSelected ? Colors.black : Colors.white70,
-                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                          fontSize: 12,
+                      if (isSelected) ...[
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            tab['title'] as String,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11.5,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
               ),
-            );
-          }),
-        ),
+            ),
+          );
+        }),
       ),
     );
   }
@@ -1615,6 +1686,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
               ),
 
             // ИГРОВОЕ ПОЛЕ
+            if (_isMatchMode) _buildMatchScoreboard(),
             Expanded(
               flex: isFullscreen ? 8 : 5,
               child: GestureDetector(
@@ -1721,6 +1793,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
                               ),
 
                             // 9. Кнопка «На весь экран»
+                            // 9. Кнопка «На весь экран»
                             Positioned(
                               top: 10,
                               right: 10,
@@ -1741,6 +1814,325 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
                                 ),
                               ),
                             ),
+
+                            // 10. Кнопка возврата расстановки к исходному состоянию
+                            Positioned(
+                              top: 48,
+                              right: 10,
+                              child: Tooltip(
+                                message: 'Вернуть в исходное положение',
+                                child: Material(
+                                  color: Colors.black.withValues(alpha: 0.65),
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(10),
+                                    onTap: () {
+                                      HapticFeedback.mediumImpact();
+                                      _resetFormationPositions();
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(7),
+                                      child: const Icon(
+                                        Icons.refresh,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            // 10a. Неблокирующий детектор быстрого паса тапом по партнеру или коридору xPass
+                            Positioned.fill(
+                              child: Listener(
+                                behavior: HitTestBehavior.translucent,
+                                onPointerDown: (event) {
+                                  _pitchPointerDownTime = DateTime.now();
+                                  _pitchPointerDownPos = event.localPosition;
+                                },
+                                onPointerUp: (event) {
+                                  if (_pitchPointerDownTime != null && _pitchPointerDownPos != null) {
+                                    final elapsed = DateTime.now().difference(_pitchPointerDownTime!).inMilliseconds;
+                                    final moved = (event.localPosition - _pitchPointerDownPos!).distance;
+                                    if (elapsed < 260 && moved < 14.0) {
+                                      _handlePitchQuickTap(
+                                        event.localPosition,
+                                        Size(constraints.maxWidth, constraints.maxHeight),
+                                      );
+                                    }
+                                  }
+                                },
+                                child: const SizedBox.expand(),
+                              ),
+                            ),
+
+                            // 10b. Аналитический слой: Контроль поля (Voronoi) + Коридоры паса (xPass %) + Линии обороны
+                            if (_showAnalyticsLayer || _showPitchControlLayer)
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: CustomPaint(
+                                    painter: _TacticalAnalyticsPainter(
+                                      bluePositions: List<Offset>.from(_pitchPositions),
+                                      redPositions: List<Offset>.from(_opponentPositions),
+                                      ballPosition: _ballPosition,
+                                      ballPossessorIndex: _ballPossessorIndex,
+                                      ballPossessorIsOpponent: _ballPossessorIsOpponent,
+                                      showBall: _showBall,
+                                      showPassingLanes: _showAnalyticsLayer,
+                                      showPitchControl: _showPitchControlLayer,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                            // 10c. Кнопка включения коридоров паса (xPass + Линии обороны)
+                            Positioned(
+                              top: 48,
+                              left: 10,
+                              child: Material(
+                                color: _showAnalyticsLayer
+                                    ? const Color(0xFF00E676)
+                                    : Colors.black.withValues(alpha: 0.65),
+                                borderRadius: BorderRadius.circular(10),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    setState(() {
+                                      _showAnalyticsLayer = !_showAnalyticsLayer;
+                                      if (_showAnalyticsLayer) {
+                                        _matchTelemetryText = 'xPass активен: тапните по партнеру или % для умного паса';
+                                      }
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.insights,
+                                          size: 16,
+                                          color: _showAnalyticsLayer ? Colors.black : const Color(0xFF00E676),
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          'xPass',
+                                          style: TextStyle(
+                                            color: _showAnalyticsLayer ? Colors.black : Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            // 10d. Кнопка включения карты контроля территории (Voronoi Pitch Control)
+                            Positioned(
+                              top: 86,
+                              left: 10,
+                              child: Material(
+                                color: _showPitchControlLayer
+                                    ? const Color(0xFF00B0FF)
+                                    : Colors.black.withValues(alpha: 0.65),
+                                borderRadius: BorderRadius.circular(10),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    setState(() {
+                                      _showPitchControlLayer = !_showPitchControlLayer;
+                                      if (_showPitchControlLayer) {
+                                        _matchTelemetryText = 'Зоны Вороного: пространственный контроль территории';
+                                      }
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.grid_on,
+                                          size: 15,
+                                          color: _showPitchControlLayer ? Colors.black : const Color(0xFF00B0FF),
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          'ЗОНЫ',
+                                          style: TextStyle(
+                                            color: _showPitchControlLayer ? Colors.black : Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            // 10e. Кнопка включения тактического ИИ соперника (Прессинг + Перекрытие xPass)
+                            Positioned(
+                              top: 124,
+                              left: 10,
+                              child: Material(
+                                color: _enableTacticalAI
+                                    ? const Color(0xFFFF5252)
+                                    : Colors.black.withValues(alpha: 0.65),
+                                borderRadius: BorderRadius.circular(10),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    setState(() {
+                                      _enableTacticalAI = !_enableTacticalAI;
+                                      _matchTelemetryText = _enableTacticalAI
+                                          ? 'Тактический ИИ Красных: прессинг и перекрытие xPass включены'
+                                          : 'Тактический ИИ Красных отключен (ручной режим)';
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.psychology,
+                                          size: 16,
+                                          color: _enableTacticalAI ? Colors.white : const Color(0xFFFF5252),
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          'ИИ',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            // 11. Кнопка переключения режима "Тактика / Матч"
+                            Positioned(
+                              top: 10,
+                              left: 10,
+                              child: Material(
+                                color: _isMatchMode ? const Color(0xFFFFB800) : Colors.black.withValues(alpha: 0.65),
+                                borderRadius: BorderRadius.circular(10),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: _toggleMatchMode,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          _isMatchMode ? Icons.sports_soccer : Icons.edit_note,
+                                          size: 16,
+                                          color: _isMatchMode ? Colors.black : Colors.white,
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          _isMatchMode ? 'МАТЧ' : 'ТАКТИКА',
+                                          style: TextStyle(
+                                            color: _isMatchMode ? Colors.black : Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            // 12. Кнопка "Удар по воротам" при владении мячом
+                            if (_isMatchMode && _ballPossessorIndex != null)
+                              Positioned(
+                                bottom: 12,
+                                left: 24,
+                                right: 24,
+                                child: Center(
+                                  child: Material(
+                                    color: const Color(0xFFFFB800),
+                                    borderRadius: BorderRadius.circular(20),
+                                    elevation: 6,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(20),
+                                      onTap: () => _shootBallAtGoal(isOpponent: _ballPossessorIsOpponent),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.sports_soccer, size: 17, color: Colors.black),
+                                            const SizedBox(width: 7),
+                                            Text(
+                                              _ballPossessorIsOpponent ? 'УДАР В СТВОР СИНИХ' : 'УДАР В СТВОР КРАСНЫХ',
+                                              style: const TextStyle(
+                                                color: Colors.black,
+                                                fontWeight: FontWeight.w900,
+                                                fontSize: 11.5,
+                                                letterSpacing: 0.5,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                            // 13. Анимированный оверлей "ГОЛ!"
+                            if (_showGoalBanner)
+                              Positioned.fill(
+                                child: Container(
+                                  color: Colors.black.withValues(alpha: 0.70),
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Text(
+                                          '⚽ ГОООЛ! ⚽',
+                                          style: TextStyle(
+                                            fontSize: 34,
+                                            fontWeight: FontWeight.w900,
+                                            color: Color(0xFFFFB800),
+                                            letterSpacing: 2,
+                                            shadows: [
+                                              Shadow(color: Colors.black, blurRadius: 10),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          _goalScorerText,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
                           ],
                         );
                       },
@@ -1749,7 +2141,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
                 ),
               ),
             ),
-
             // СКАМЕЙКА ЗАПАСНЫХ
             if (!isFullscreen) Expanded(
               flex: isFullscreen ? 2 : 2,
@@ -1833,14 +2224,13 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
       final oppPos = opposingPositions[j];
       if ((currentPos - oppPos).distance < tackleRadius) {
         _ballPosition = Offset(
-          (oppPos.dx + 0.024).clamp(0.04, 0.96),
-          (oppPos.dy + 0.018).clamp(0.04, 0.96),
+          (oppPos.dx + 0.052).clamp(0.04, 0.96),
+          (oppPos.dy + 0.016).clamp(0.04, 0.96),
         );
         // Мяч полноценно переходит отобравшему игроку
         _ballPossessorIndex = j;
         _ballPossessorIsOpponent = !isOpponent;
         _selectedPlayerForBall = null;
-        _activeTouchPlayerIndex = null;
         _activePlayerTrail.clear();
         _blinkController.repeat(reverse: true);
 
@@ -1882,8 +2272,8 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
     final startPos = _ballPosition;
     final targetCenter = isOpponent ? _opponentPositions[targetIndex] : _pitchPositions[targetIndex];
     final endPos = Offset(
-      (targetCenter.dx + 0.024).clamp(0.04, 0.96),
-      (targetCenter.dy + 0.018).clamp(0.04, 0.96),
+      (targetCenter.dx + 0.052).clamp(0.04, 0.96),
+      (targetCenter.dy + 0.016).clamp(0.04, 0.96),
     );
 
     final v = endPos - startPos;
@@ -1911,8 +2301,8 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
             minT = t;
             interceptingIndex = j;
             interceptPos = Offset(
-              (defPos.dx + 0.024).clamp(0.04, 0.96),
-              (defPos.dy + 0.018).clamp(0.04, 0.96),
+              (defPos.dx + 0.052).clamp(0.04, 0.96),
+              (defPos.dy + 0.016).clamp(0.04, 0.96),
             );
           }
         }
@@ -1930,7 +2320,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
       _ballPossessorIndex = null;
       _ballPossessorIsOpponent = false;
       _selectedPlayerForBall = null;
-      _activeTouchPlayerIndex = null;
       _movingPlayerIndex = null;
     });
 
@@ -1983,7 +2372,6 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
                   : pPos;
               setState(() {
                 _movingPlayerIndex = pIdx;
-                _movingPlayerIsOpponent = isOpp;
                 _activePlayerTrail = [pPos, targetPos];
                 _ballPassTrail.clear();
               });
@@ -2019,6 +2407,1223 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
   }
 
   // ОБЩИЙ БИЛДЕР ФИШЕК ДЛЯ НАШЕЙ КОМАНДЫ (СИНИЕ) И СОПЕРНИКОВ (КРАСНЫЕ)
+  void _startPlayerRun(int index, bool isOpponent, List<Offset> trail) {
+    if (trail.length < 2) return;
+    final key = _playerKey(index, isOpponent);
+    setState(() {
+      _runningPlayers[key] = _PlayerRunState(
+        index: index,
+        isOpponent: isOpponent,
+        trail: trail,
+        startTime: DateTime.now(),
+        durationMs: 1470,
+      );
+      _movingPlayerIndex = index;
+      _activePlayerTrail = trail;
+    });
+
+    if (!_moveController.isAnimating) {
+      _moveController.repeat();
+    }
+  }
+
+  
+  // ==========================================
+  // --- МАТЕМАТИЧЕСКАЯ МОДЕЛЬ ИГРЫ (MATCH ENGINE) ---
+  // ==========================================
+
+  // Вынос мяча на 2/3 из-под игрока вперед по направлению атаки (20.7 px)
+  // Коэффициент пропорций поля для устранения эллиптического искажения расстояний
+  static const double _pitchAspectRatioY = 0.68;
+
+  double _metricDistance(Offset a, Offset b) {
+    final dx = a.dx - b.dx;
+    final dy = (a.dy - b.dy) * _pitchAspectRatioY;
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
+  // Непрерывная детекция коллизий (расстояние от игрока до отрезка полета мяча за тик)
+  Offset _closestPointOnSegment(Offset p, Offset a, Offset b) {
+    final ab = b - a;
+    final lenSq = ab.dx * ab.dx + ab.dy * ab.dy;
+    if (lenSq < 1e-7) return a;
+    final ap = p - a;
+    final t = ((ap.dx * ab.dx + ap.dy * ab.dy) / lenSq).clamp(0.0, 1.0);
+    return Offset(a.dx + ab.dx * t, a.dy + ab.dy * t);
+  }
+
+  // 1. Векторное позиционирование мяча: вынос ровно на 2/3 по курсу движения игрока
+  Offset _getDribbleBallPosition(Offset playerPos, bool isOpponent) {
+    final teamPrefix = isOpponent ? 'opp' : 'own';
+    int? idx = _ballPossessorIndex;
+    final key = idx != null ? '${teamPrefix}_$idx' : '${teamPrefix}_active';
+
+    final prevPos = _prevPlayerPositions[key];
+    Offset heading = _playerHeadings[key] ?? Offset(isOpponent ? -1.0 : 1.0, 0.0);
+
+    if (prevPos != null) {
+      final delta = playerPos - prevPos;
+      final dist = _metricDistance(playerPos, prevPos);
+      if (dist > 0.0025) {
+        final normDelta = Offset(delta.dx, delta.dy * _pitchAspectRatioY);
+        final len = normDelta.distance;
+        if (len > 1e-5) {
+          final rawDir = normDelta / len;
+          // Плавное сглаживание поворота корпуса игрока (EMA)
+          final blended = Offset(
+            heading.dx * 0.45 + rawDir.dx * 0.55,
+            heading.dy * 0.45 + rawDir.dy * 0.55,
+          );
+          if (blended.distance > 1e-5) {
+            heading = blended / blended.distance;
+            _playerHeadings[key] = heading;
+          }
+        }
+      }
+    }
+    _prevPlayerPositions[key] = playerPos;
+
+    // Радиус фишки 18px + радиус мяча 8px - 1/3 перекрытия (5.3px) = 20.7px выноса вперед
+    const double offsetX = 0.050;
+    const double offsetY = 0.050 / _pitchAspectRatioY;
+
+    return Offset(
+      (playerPos.dx + heading.dx * offsetX).clamp(0.035, 0.965),
+      (playerPos.dy + heading.dy * offsetY).clamp(0.04, 0.96),
+    );
+  }
+
+  // 2. Математическая модель Expected Goals (xG) по стандарту StatsBomb
+  double _calculateShotXG(Offset shotPos, {required bool isOpponent}) {
+    final double goalX = isOpponent ? 0.04 : 0.96;
+    const Offset postTop = Offset(0.0, 0.42);
+    const Offset postBottom = Offset(0.0, 0.58);
+
+    final g1 = Offset(goalX, postTop.dy);
+    final g2 = Offset(goalX, postBottom.dy);
+    final goalCenter = Offset(goalX, 0.50);
+
+    final d1 = _metricDistance(shotPos, g1).clamp(0.02, 2.0);
+    final d2 = _metricDistance(shotPos, g2).clamp(0.02, 2.0);
+    final distToCenter = _metricDistance(shotPos, goalCenter).clamp(0.02, 2.0);
+    const double goalWidthMetric = 0.16 * _pitchAspectRatioY;
+
+    // Теорема косинусов для видимого угла створа ворот
+    final cosTheta = ((d1 * d1 + d2 * d2 - goalWidthMetric * goalWidthMetric) / (2 * d1 * d2)).clamp(-1.0, 1.0);
+    final theta = math.acos(cosTheta);
+
+    // Коэффициент перекрытия створа вратарем
+    double gkBlock = 0.0;
+    final gkList = isOpponent ? _pitchPositions : _opponentPositions;
+    if (gkList.isNotEmpty) {
+      final gkPos = gkList[0];
+      final gkDistToLine = (gkPos.dy - 0.50).abs();
+      gkBlock = (1.0 - (gkDistToLine / 0.08)).clamp(0.0, 1.0);
+    }
+
+    // Логистическая регрессия вероятности гола
+    final logit = -2.15 + (3.65 * theta) - (2.15 * distToCenter) - (0.95 * gkBlock);
+    final xg = 1.0 / (1.0 + math.exp(-logit));
+    return xg.clamp(0.01, 0.97);
+  }
+
+  void _toggleMatchMode() {
+    setState(() {
+      _isMatchMode = !_isMatchMode;
+      if (_isMatchMode) {
+        _startMatchTimer();
+      } else {
+        _matchTicker?.cancel();
+        _isMatchTimerActive = false;
+        _freeBallVelocity = null;
+      }
+    });
+    HapticFeedback.selectionClick();
+  }
+
+  void _toggleMatchTimer() {
+    setState(() {
+      _isMatchTimerActive = !_isMatchTimerActive;
+      if (_isMatchTimerActive) {
+        _startMatchTimer();
+      } else {
+        _matchTicker?.cancel();
+      }
+    });
+    HapticFeedback.selectionClick();
+  }
+
+  void _resetMatchGame() {
+    setState(() {
+      _blueScore = 0;
+      _redScore = 0;
+      _blueXG = 0.0;
+      _redXG = 0.0;
+      _bluePossessionTicks = 1;
+      _redPossessionTicks = 1;
+      _matchTelemetryText = 'Матч начался • 1-й тайм';
+      _matchSeconds = 300;
+      _freeBallVelocity = null;
+      _showGoalBanner = false;
+      _prevPlayerPositions.clear();
+      _playerHeadings.clear();
+    });
+    _resetFormationPositions();
+    _startMatchTimer();
+    HapticFeedback.mediumImpact();
+  }
+
+  void _startMatchTimer() {
+    _matchTicker?.cancel();
+    _isMatchTimerActive = true;
+    _matchTicker = Timer.periodic(const Duration(milliseconds: 33), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      _matchPhysicsTick();
+    });
+  }
+
+  void _matchPhysicsTick() {
+    if (!_isMatchMode && _freeBallVelocity == null) return;
+    if (_passIgnoreTicks > 0) _passIgnoreTicks--;
+
+    bool needsRebuild = false;
+    _matchPhysicsCounter++;
+
+    if (_isMatchTimerActive && _matchPhysicsCounter % 30 == 0) {
+      if (_matchSeconds > 0) {
+        _matchSeconds--;
+        needsRebuild = true;
+      } else {
+        _isMatchTimerActive = false;
+        _matchTicker?.cancel();
+        _matchTelemetryText = 'Матч окончен • Финальный свисток';
+        needsRebuild = true;
+      }
+    }
+
+    // Учет телеметрии владения мячом
+    if (_isMatchTimerActive && !_showGoalBanner) {
+      if (_ballPossessorIndex != null) {
+        if (_ballPossessorIsOpponent) {
+          _redPossessionTicks++;
+        } else {
+          _bluePossessionTicks++;
+        }
+      }
+    }
+
+    // 3. Баллистика свободного полета мяча и непрерывная детекция коллизий (CCD)
+    if (_freeBallVelocity != null) {
+      final curVel = _freeBallVelocity!;
+      final prevPos = _ballPosition;
+      Offset nextPos = Offset(
+        (prevPos.dx + curVel.dx).clamp(0.02, 0.98),
+        (prevPos.dy + curVel.dy).clamp(0.04, 0.96),
+      );
+
+      // Отскок от боковых бровок (аут-стенка в мини-режиме с гашением импульса)
+      Offset newVel = curVel * 0.96;
+      if (nextPos.dy <= 0.042 || nextPos.dy >= 0.958) {
+        newVel = Offset(newVel.dx * 0.85, -newVel.dy * 0.70);
+      }
+
+      // Сначала проверяем перехват на отрезке [prevPos -> nextPos]
+      final intercepted = _checkBallInterceptionOnFly(prevPos, nextPos);
+      if (!intercepted) {
+        _ballPosition = nextPos;
+        _checkGoalOrSave(prevPos, nextPos, newVel);
+
+        if (_freeBallVelocity != null) {
+          if (newVel.distance < 0.0015) {
+            _freeBallVelocity = null;
+          } else {
+            _freeBallVelocity = newVel;
+          }
+        }
+      }
+      needsRebuild = true;
+    }
+
+    if (_updateTacticalOpponentAI()) {
+      needsRebuild = true;
+    }
+    if (_updateGoalkeepersAI()) {
+      needsRebuild = true;
+    }
+    if (_updateTackleContest()) {
+      needsRebuild = true;
+    }
+
+    if (needsRebuild && mounted) {
+      setState(() {});
+    }
+  }
+
+  // Расчет вероятности прохождения передачи xPass (%) для физического движка
+  int _computePassProbabilityForEngine(
+    Offset p0,
+    Offset target,
+    List<Offset> opponents,
+  ) {
+    final passDist = _metricDistance(p0, target);
+    final ab = target - p0;
+    final lenSq = ab.dx * ab.dx + ab.dy * ab.dy;
+    if (lenSq < 1e-6) return 95;
+
+    double minClearanceRatio = 4.0;
+    for (final opp in opponents) {
+      final ap = opp - p0;
+      final t = (ap.dx * ab.dx + ap.dy * ab.dy) / lenSq;
+      if (t < 0.05 || t > 1.05) continue;
+
+      final clampedT = t.clamp(0.0, 1.0);
+      final closest = Offset(p0.dx + ab.dx * clampedT, p0.dy + ab.dy * clampedT);
+      final perpDist = _metricDistance(opp, closest);
+      final coneRadius = 0.026 + 0.14 * (clampedT * passDist);
+      final ratio = perpDist / coneRadius;
+      if (ratio < minClearanceRatio) {
+        minClearanceRatio = ratio;
+      }
+    }
+
+    final distFactor = math.exp(-0.42 * passDist);
+    final openFactor = 1.0 - math.exp(-1.65 * minClearanceRatio * minClearanceRatio);
+    return (distFactor * openFactor * 100.0).round().clamp(5, 98);
+  }
+
+  // Быстрый пас тапом по партнеру или коридору с учетом вероятности xPass
+  void _executeSmartXPass({required int targetIndex, required bool isOpponent}) {
+    if (!_showBall) return;
+    final teammates = isOpponent ? _opponentPositions : _pitchPositions;
+    final opponents = isOpponent ? _pitchPositions : _opponentPositions;
+    if (targetIndex < 0 || targetIndex >= teammates.length) return;
+
+    final int? passerIdx = _ballPossessorIndex;
+    if (passerIdx == targetIndex && _ballPossessorIsOpponent == isOpponent) return;
+
+    final Offset startPos = passerIdx != null && passerIdx < teammates.length
+        ? teammates[passerIdx]
+        : _ballPosition;
+
+    // Если партнер бежит по треку — делаем пас на ход (упреждение)
+    Offset aimTarget = teammates[targetIndex];
+    final runnerKey = '${isOpponent ? "opp" : "own"}_$targetIndex';
+    if (_runningPlayers.containsKey(runnerKey)) {
+      final runner = _runningPlayers[runnerKey]!;
+      if (runner.trail.length >= 2) {
+        final nextStep = runner.trail.last - aimTarget;
+        if (nextStep.distance > 0.02) {
+          final leadDir = nextStep / nextStep.distance;
+          aimTarget = Offset(
+            (aimTarget.dx + leadDir.dx * 0.045).clamp(0.05, 0.95),
+            (aimTarget.dy + leadDir.dy * 0.045).clamp(0.05, 0.95),
+          );
+        }
+      }
+    }
+
+    final int xPassPct = _computePassProbabilityForEngine(startPos, aimTarget, opponents);
+    final Offset rawVec = aimTarget - _ballPosition;
+    final double euclidDist = rawVec.distance;
+    if (euclidDist < 0.01) return;
+
+    // Проверка успешности паса по модели xPass
+    final rng = math.Random();
+    final double roll = rng.nextDouble() * 100.0;
+    final bool isCleanPass = roll <= xPassPct;
+
+    double baseAngle = math.atan2(rawVec.dy, rawVec.dx);
+    if (isCleanPass) {
+      // Минимальная погрешность при успешном прохождении коридора
+      baseAngle += (rng.nextDouble() - 0.5) * 0.024;
+    } else {
+      // Срыв траектории под прессингом (чем ниже xPass, тем сильнее отклонение)
+      final double pressureFactor = (100 - xPassPct) / 100.0;
+      final double sign = rng.nextBool() ? 1.0 : -1.0;
+      baseAngle += sign * (0.055 + 0.20 * pressureFactor);
+    }
+
+    final Offset launchDir = Offset(math.cos(baseAngle), math.sin(baseAngle));
+    // Калибровка начальной скорости под трение 0.96 за тик (S = V0 / 0.04)
+    final double speed = (0.040 * euclidDist + 0.0135).clamp(0.022, 0.052);
+
+    final String passerKey = '${isOpponent ? "opp" : "own"}_${passerIdx ?? 0}';
+    _playerHeadings[passerKey] = launchDir;
+
+    if (_passController.isAnimating) {
+      _passController.stop();
+    }
+
+    HapticFeedback.lightImpact();
+    setState(() {
+      _selectedPlayerForBall = null;
+      _lastPasserIndex = passerIdx;
+      _lastPasserIsOpponent = isOpponent;
+      _passIgnoreTicks = 7;
+      _lastShotByOpponent = isOpponent;
+      _ballPossessorIndex = null;
+      _freeBallVelocity = launchDir * speed;
+
+      final teamName = isOpponent ? 'Красные' : 'Синие';
+      if (isCleanPass) {
+        _matchTelemetryText =
+            'Пас $teamName (#${(passerIdx ?? 0) + 1} ➔ #${targetIndex + 1}) • xPass: $xPassPct% (точно в темп)';
+      } else {
+        _matchTelemetryText =
+            'Риск перехвата! Пас $teamName (#${(passerIdx ?? 0) + 1} ➔ #${targetIndex + 1}) • xPass: $xPassPct%';
+      }
+    });
+
+    // Запускаем физический тикер, если пас отдан в тактическом режиме с включенным xPass
+    if (_matchTicker == null || !_matchTicker!.isActive) {
+      _matchTicker = Timer.periodic(const Duration(milliseconds: 33), (t) {
+        if (!mounted) {
+          t.cancel();
+          return;
+        }
+        _matchPhysicsTick();
+      });
+    }
+  }
+
+  // Обработка быстрого тапа по партнеру или по плашке процента xPass на поле
+  void _handlePitchQuickTap(Offset localPos, Size pitchSize) {
+    if (!_showBall) return;
+    if (!_isMatchMode && !_showAnalyticsLayer) return;
+
+    // Игнорируем клики по верхним и нижним HUD-кнопкам поля
+    if (localPos.dy < 168 && (localPos.dx < 115 || localPos.dx > pitchSize.width - 65)) {
+      return;
+    }
+    if (_isMatchMode && _ballPossessorIndex != null && localPos.dy > pitchSize.height - 52) {
+      return;
+    }
+
+    final Offset tapNorm = Offset(
+      (localPos.dx / pitchSize.width).clamp(0.0, 1.0),
+      (localPos.dy / pitchSize.height).clamp(0.0, 1.0),
+    );
+
+    int? carrierIdx = _ballPossessorIndex;
+    bool isOpp = _ballPossessorIsOpponent;
+
+    // Если мяч свободен, но лежит рядом с игроком — считаем его распасовщиком
+    if (carrierIdx == null) {
+      double minDist = 0.085;
+      for (int i = 0; i < _pitchPositions.length; i++) {
+        final d = _metricDistance(_pitchPositions[i], _ballPosition);
+        if (d < minDist) {
+          minDist = d;
+          carrierIdx = i;
+          isOpp = false;
+        }
+      }
+      for (int i = 0; i < _opponentPositions.length; i++) {
+        final d = _metricDistance(_opponentPositions[i], _ballPosition);
+        if (d < minDist) {
+          minDist = d;
+          carrierIdx = i;
+          isOpp = true;
+        }
+      }
+    }
+
+    if (carrierIdx == null) return;
+    final teammates = isOpp ? _opponentPositions : _pitchPositions;
+    if (carrierIdx >= teammates.length) return;
+    final Offset p0 = teammates[carrierIdx];
+
+    int? chosenTarget;
+    double bestHitDist = 0.056;
+
+    for (int i = 0; i < teammates.length; i++) {
+      if (i == carrierIdx) continue;
+      final Offset target = teammates[i];
+
+      // 1. Проверка тапа прямо по фишке партнера
+      final double distToPlayer = _metricDistance(tapNorm, target);
+      if (distToPlayer < bestHitDist) {
+        bestHitDist = distToPlayer;
+        chosenTarget = i;
+      }
+
+      // 2. Проверка тапа по бейджу xPass% в середине коридора паса
+      if (_showAnalyticsLayer) {
+        final Offset midBadge = Offset(
+          p0.dx * 0.45 + target.dx * 0.55,
+          p0.dy * 0.45 + target.dy * 0.55,
+        );
+        final double distToBadge = _metricDistance(tapNorm, midBadge);
+        if (distToBadge < bestHitDist) {
+          bestHitDist = distToBadge;
+          chosenTarget = i;
+        }
+      }
+    }
+
+    if (chosenTarget != null) {
+      final int targetIdx = chosenTarget;
+      final bool teamFlag = isOpp;
+      Future.microtask(() {
+        if (mounted) {
+          _executeSmartXPass(targetIndex: targetIdx, isOpponent: teamFlag);
+        }
+      });
+    }
+  }
+
+  void _shootBallAtGoal({required bool isOpponent}) {
+    if (!_showBall) return;
+    HapticFeedback.mediumImpact();
+
+    final double targetX = isOpponent ? 0.035 : 0.965;
+    // Целимся в углы створа ворот (с небольшим разбросом точности)
+    final rng = math.Random();
+    final bool aimTopCorner = rng.nextBool();
+    final double baseAimY = aimTopCorner ? 0.445 : 0.555;
+    final double spread = (rng.nextDouble() - 0.5) * 0.055;
+    final double targetY = (baseAimY + spread).clamp(0.39, 0.61);
+    final target = Offset(targetX, targetY);
+
+    final shotXG = _calculateShotXG(_ballPosition, isOpponent: isOpponent);
+
+    final dir = target - _ballPosition;
+    if (dir.distance > 0.001) {
+      final norm = dir / dir.distance;
+      final key = isOpponent ? 'opp_${_ballPossessorIndex ?? 0}' : 'own_${_ballPossessorIndex ?? 0}';
+      _playerHeadings[key] = norm;
+
+      setState(() {
+        if (isOpponent) {
+          _redXG += shotXG;
+          _matchTelemetryText = 'Удар Красных • xG момента: ${shotXG.toStringAsFixed(2)}';
+        } else {
+          _blueXG += shotXG;
+          _matchTelemetryText = 'Удар Синих • xG момента: ${shotXG.toStringAsFixed(2)}';
+        }
+        _lastShotByOpponent = isOpponent;
+        _ballPossessorIndex = null;
+        _freeBallVelocity = norm * 0.046;
+      });
+    }
+  }
+
+  void _checkGoalOrSave(Offset prevPos, Offset ballPos, Offset velocity) {
+    if (_showGoalBanner) return;
+
+    // 1. Правые ворота (Красные защищают, Синие атакуют)
+    if (ballPos.dx >= 0.945) {
+      // Проверка попадания в штангу (каркас ворот: 0.405..0.422 и 0.578..0.595)
+      if ((ballPos.dy >= 0.402 && ballPos.dy < 0.420) || (ballPos.dy > 0.580 && ballPos.dy <= 0.598)) {
+        HapticFeedback.heavyImpact();
+        _freeBallVelocity = Offset(-velocity.dx.abs() * 0.55, (ballPos.dy < 0.5 ? -0.015 : 0.015));
+        _matchTelemetryText = 'ШТАНГА! Каркас спасает ворота Красных!';
+        return;
+      }
+
+      // Створ ворот [0.420 .. 0.580]
+      if (ballPos.dy >= 0.420 && ballPos.dy <= 0.580) {
+        final gkPos = _opponentPositions.isNotEmpty ? _opponentPositions[0] : const Offset(0.92, 0.50);
+        final distToGk = _metricDistance(gkPos, ballPos);
+
+        if (distToGk < 0.032) {
+          // Сейв вратаря Красных (ловля намертво или отбивание перед собой при мощном ударе)
+          HapticFeedback.lightImpact();
+          if (velocity.distance > 0.038 && math.Random().nextDouble() < 0.35) {
+            _freeBallVelocity = Offset(-0.024, (math.Random().nextDouble() - 0.5) * 0.03);
+            _matchTelemetryText = 'СЕЙВ! Вратарь Красных отбивает мяч в поле!';
+          } else {
+            _freeBallVelocity = null;
+            if (_opponentPositions.isNotEmpty) {
+              _ballPossessorIndex = 0;
+              _ballPossessorIsOpponent = true;
+              _playerHeadings['opp_0'] = const Offset(-1.0, 0.0);
+              _ballPosition = _getDribbleBallPosition(gkPos, true);
+              _matchTelemetryText = 'Вратарь Красных намертво фиксирует мяч';
+            }
+          }
+        } else if (ballPos.dx >= 0.955) {
+          _handleGoal(scoredByBlue: true);
+        }
+        return;
+      } else if (ballPos.dx >= 0.965) {
+        // Уход за лицевую линию (удар от ворот)
+        _freeBallVelocity = null;
+        if (_opponentPositions.isNotEmpty) {
+          _ballPossessorIndex = 0;
+          _ballPossessorIsOpponent = true;
+          _ballPosition = _getDribbleBallPosition(_opponentPositions[0], true);
+          _matchTelemetryText = 'Мимо створа • Удар от ворот Красных';
+        }
+      }
+    }
+
+    // 2. Левые ворота (Синие защищают, Красные атакуют)
+    if (ballPos.dx <= 0.055) {
+      if ((ballPos.dy >= 0.402 && ballPos.dy < 0.420) || (ballPos.dy > 0.580 && ballPos.dy <= 0.598)) {
+        HapticFeedback.heavyImpact();
+        _freeBallVelocity = Offset(velocity.dx.abs() * 0.55, (ballPos.dy < 0.5 ? -0.015 : 0.015));
+        _matchTelemetryText = 'ШТАНГА! Каркас спасает ворота Синих!';
+        return;
+      }
+
+      if (ballPos.dy >= 0.420 && ballPos.dy <= 0.580) {
+        final gkPos = _pitchPositions.isNotEmpty ? _pitchPositions[0] : const Offset(0.08, 0.50);
+        final distToGk = _metricDistance(gkPos, ballPos);
+
+        if (distToGk < 0.032) {
+          HapticFeedback.lightImpact();
+          if (velocity.distance > 0.038 && math.Random().nextDouble() < 0.35) {
+            _freeBallVelocity = Offset(0.024, (math.Random().nextDouble() - 0.5) * 0.03);
+            _matchTelemetryText = 'СЕЙВ! Вратарь Синих парирует сложный удар!';
+          } else {
+            _freeBallVelocity = null;
+            if (_pitchPositions.isNotEmpty) {
+              _ballPossessorIndex = 0;
+              _ballPossessorIsOpponent = false;
+              _playerHeadings['own_0'] = const Offset(1.0, 0.0);
+              _ballPosition = _getDribbleBallPosition(gkPos, false);
+              _matchTelemetryText = 'Вратарь Синих забирает мяч в руки';
+            }
+          }
+        } else if (ballPos.dx <= 0.045) {
+          _handleGoal(scoredByBlue: false);
+        }
+        return;
+      } else if (ballPos.dx <= 0.035) {
+        _freeBallVelocity = null;
+        if (_pitchPositions.isNotEmpty) {
+          _ballPossessorIndex = 0;
+          _ballPossessorIsOpponent = false;
+          _ballPosition = _getDribbleBallPosition(_pitchPositions[0], false);
+          _matchTelemetryText = 'Мимо створа • Удар от ворот Синих';
+        }
+      }
+    }
+  }
+
+  void _handleGoal({required bool scoredByBlue}) {
+    _freeBallVelocity = null;
+    HapticFeedback.heavyImpact();
+
+    setState(() {
+      if (scoredByBlue) {
+        _blueScore++;
+        _goalScorerText = 'ГОЛ! СИНИЕ ЗАБИЛИ! (xG: ${_blueXG.toStringAsFixed(2)})';
+        _matchTelemetryText = 'ГОЛ СИНИХ! Счет становится $_blueScore : $_redScore';
+      } else {
+        _redScore++;
+        _goalScorerText = 'ГОЛ! КРАСНЫЕ ЗАБИЛИ! (xG: ${_redXG.toStringAsFixed(2)})';
+        _matchTelemetryText = 'ГОЛ КРАСНЫХ! Счет становится $_blueScore : $_redScore';
+      }
+      _showGoalBanner = true;
+      _ballPossessorIndex = null;
+    });
+
+    Future.delayed(const Duration(milliseconds: 2200), () {
+      if (!mounted) return;
+      _resetToKickoff();
+      setState(() {
+        _showGoalBanner = false;
+      });
+    });
+  }
+
+  void _resetToKickoff() {
+    _resetFormationPositions();
+    setState(() {
+      _ballPosition = const Offset(0.50, 0.50);
+      _ballPossessorIndex = null;
+      _freeBallVelocity = null;
+    });
+  }
+
+  // Тактический ИИ полевых игроков соперника: прессинг носителя мяча, перекрытие коридоров xPass и контратака
+  bool _updateTacticalOpponentAI() {
+    if (!_isMatchMode || !_enableTacticalAI || !_isMatchTimerActive || _showGoalBanner || _isDemoMode) {
+      return false;
+    }
+    if (_opponentPositions.length <= 1) return false;
+
+    bool changed = false;
+    _aiDecisionTicks++;
+
+    // --- СЦЕНАРИЙ А: МЯЧ У КРАСНЫХ (АТАКА / КОНТРАТАКА ИИ) ---
+    if (_ballPossessorIndex != null && _ballPossessorIsOpponent) {
+      final int carrierIdx = _ballPossessorIndex!;
+      if (carrierIdx >= 0 && carrierIdx < _opponentPositions.length) {
+        final Offset carrierPos = _opponentPositions[carrierIdx];
+
+        // Принятие тактического решения каждые 16 тиков (~0.52 сек)
+        if (_aiDecisionTicks >= 16) {
+          _aiDecisionTicks = 0;
+
+          // 1. Если вратарь Красных (j == 0) держит мяч — пас открытому полевому партнеру
+          if (carrierIdx == 0) {
+            int bestTarget = -1;
+            int bestProb = -1;
+            for (int j = 1; j < _opponentPositions.length; j++) {
+              final int prob = _computePassProbabilityForEngine(
+                carrierPos,
+                _opponentPositions[j],
+                _pitchPositions,
+              );
+              if (prob > bestProb) {
+                bestProb = prob;
+                bestTarget = j;
+              }
+            }
+            if (bestTarget != -1) {
+              Future.microtask(() {
+                if (mounted) _executeSmartXPass(targetIndex: bestTarget, isOpponent: true);
+              });
+              return true;
+            }
+          } else {
+            // 2. Проверка ударной позиции (xG >= 0.20 или близость к воротам Синих)
+            final double currentXG = _calculateShotXG(carrierPos, isOpponent: true);
+            if (carrierPos.dx < 0.27 || currentXG >= 0.20) {
+              Future.microtask(() {
+                if (mounted) _shootBallAtGoal(isOpponent: true);
+              });
+              return true;
+            }
+
+            // 3. Поиск обостряющего паса вперед с высоким xPass (%)
+            int bestPassTarget = -1;
+            double bestPassScore = -999.0;
+            for (int j = 1; j < _opponentPositions.length; j++) {
+              if (j == carrierIdx) continue;
+              final Offset matePos = _opponentPositions[j];
+              final int prob = _computePassProbabilityForEngine(
+                carrierPos,
+                matePos,
+                _pitchPositions,
+              );
+              final double forwardGain = carrierPos.dx - matePos.dx;
+              // Комбинированная оценка: проходимость коридора + продвижение к воротам Синих
+              final double score = prob + (forwardGain * 130.0);
+              if (prob >= 64 && forwardGain > 0.04 && score > bestPassScore) {
+                bestPassScore = score;
+                bestPassTarget = j;
+              }
+            }
+
+            if (bestPassTarget != -1) {
+              final int targetIdx = bestPassTarget;
+              Future.microtask(() {
+                if (mounted) _executeSmartXPass(targetIndex: targetIdx, isOpponent: true);
+              });
+              return true;
+            }
+          }
+        }
+
+        // 4. Дриблинг носителя мяча к воротам Синих (x = 0.04, y = 0.50) с уходом от защитника
+        if (carrierIdx > 0 && !_runningPlayers.containsKey('opp_$carrierIdx')) {
+          Offset goalDir = const Offset(0.06, 0.50) - carrierPos;
+          if (goalDir.distance > 0.001) {
+            goalDir = goalDir / goalDir.distance;
+          }
+          Offset evadeVec = Offset.zero;
+          for (final bp in _pitchPositions) {
+            final double d = _metricDistance(carrierPos, bp);
+            if (d < 0.09 && d > 1e-4) {
+              final Offset away = carrierPos - bp;
+              evadeVec += (away / away.distance) * ((0.09 - d) * 6.0);
+            }
+          }
+          Offset moveDir = goalDir + evadeVec * 0.65;
+          if (moveDir.distance > 1e-4) {
+            moveDir = moveDir / moveDir.distance;
+            final Offset nextPos = Offset(
+              (carrierPos.dx + moveDir.dx * 0.0038).clamp(0.07, 0.93),
+              (carrierPos.dy + moveDir.dy * 0.0046).clamp(0.07, 0.93),
+            );
+            _opponentPositions[carrierIdx] = nextPos;
+            _ballPosition = _getDribbleBallPosition(nextPos, true);
+            changed = true;
+          }
+        }
+
+        // 5. Открывание остальных полевых игроков Красных в свободные зоны атаки
+        for (int j = 1; j < _opponentPositions.length; j++) {
+          if (j == carrierIdx || _runningPlayers.containsKey('opp_$j')) continue;
+          final Offset cur = _opponentPositions[j];
+          final double laneY = (0.18 + ((j - 1) / math.max(1, _opponentPositions.length - 2)) * 0.64).clamp(0.12, 0.88);
+          final double targetX = (carrierPos.dx - 0.14 + (j.isEven ? -0.04 : 0.04)).clamp(0.14, 0.78);
+          final Offset supportTarget = Offset(targetX, laneY);
+          final Offset delta = supportTarget - cur;
+          if (delta.distance > 0.012) {
+            final Offset dir = delta / delta.distance;
+            _opponentPositions[j] = Offset(
+              (cur.dx + dir.dx * 0.0034).clamp(0.08, 0.92),
+              (cur.dy + dir.dy * 0.0038).clamp(0.07, 0.93),
+            );
+            changed = true;
+          }
+        }
+      }
+      return changed;
+    }
+
+    // --- СЦЕНАРИЙ Б: МЯЧ У СИНИХ ИЛИ СВОБОДЕН (ПРЕССИНГ + ПЕРЕКРЫТИЕ КОРИДОРОВ xPass) ---
+    final Offset ballRef = (_ballPossessorIndex != null && !_ballPossessorIsOpponent && _ballPossessorIndex! < _pitchPositions.length)
+        ? _pitchPositions[_ballPossessorIndex!]
+        : _ballPosition;
+
+    // 1. Определяем ближайшего полевого игрока Красных для активного прессинга (Primary Presser)
+    int presserIdx = -1;
+    double minPressDist = 999.0;
+    for (int j = 1; j < _opponentPositions.length; j++) {
+      if (_runningPlayers.containsKey('opp_$j')) continue;
+      final double d = _metricDistance(_opponentPositions[j], ballRef);
+      if (d < minPressDist) {
+        minPressDist = d;
+        presserIdx = j;
+      }
+    }
+
+    // Движение прессингующего игрока в точку Goal-Side (между мячом и воротами Красных)
+    if (presserIdx != -1) {
+      final Offset cur = _opponentPositions[presserIdx];
+      const Offset redGoal = Offset(0.96, 0.50);
+      Offset toGoal = redGoal - ballRef;
+      if (toGoal.distance > 1e-4) {
+        toGoal = toGoal / toGoal.distance;
+      }
+      // Если мяч ничейный — бежим прямо на мяч; если у игрока Синих — сближаемся вплотную для отбора
+      final Offset pressTarget = (_ballPossessorIndex == null)
+          ? ballRef
+          : Offset(
+              (ballRef.dx + toGoal.dx * 0.014).clamp(0.05, 0.94),
+              (ballRef.dy + toGoal.dy * 0.014).clamp(0.06, 0.94),
+            );
+      final Offset delta = pressTarget - cur;
+      if (delta.distance > 0.004) {
+        final Offset dir = delta / delta.distance;
+        final double step = math.min(0.0046, delta.distance);
+        _opponentPositions[presserIdx] = Offset(
+          (cur.dx + dir.dx * step).clamp(0.06, 0.93),
+          (cur.dy + dir.dy * step).clamp(0.06, 0.94),
+        );
+        _playerHeadings['opp_$presserIdx'] = dir;
+        changed = true;
+      }
+    }
+
+    // 2. Формируем список узлов перехвата (Cover Shadow Nodes) на коридорах паса Синих
+    final List<Offset> coverNodes = [];
+    final int? blueCarrier = (!_ballPossessorIsOpponent) ? _ballPossessorIndex : null;
+
+    for (int i = 0; i < _pitchPositions.length; i++) {
+      if (i == blueCarrier) continue;
+      final Offset receiver = _pitchPositions[i];
+      // Игнорируем глубокого вратаря Синих, если мяч далеко впереди
+      if (i == 0 && ballRef.dx > 0.38) continue;
+
+      // Точка на 52% длины коридора паса — максимум перекрытия тени xPass
+      final Offset shadowNode = Offset(
+        ballRef.dx + (receiver.dx - ballRef.dx) * 0.52,
+        ballRef.dy + (receiver.dy - ballRef.dy) * 0.52,
+      );
+      coverNodes.add(shadowNode);
+    }
+
+    // Сортируем коридоры по опасности (чем ближе к воротам Красных x = 0.96, тем приоритетнее)
+    coverNodes.sort((a, b) => b.dx.compareTo(a.dx));
+    final Set<int> assignedNodes = {};
+
+    // 3. Распределяем остальных полевых игроков Красных по коридорам xPass
+    for (int j = 1; j < _opponentPositions.length; j++) {
+      if (j == presserIdx || _runningPlayers.containsKey('opp_$j')) continue;
+      final Offset cur = _opponentPositions[j];
+
+      int bestNodeIdx = -1;
+      double bestNodeCost = 999.0;
+      for (int n = 0; n < coverNodes.length; n++) {
+        if (assignedNodes.contains(n)) continue;
+        final double d = _metricDistance(cur, coverNodes[n]);
+        // Учитываем близость защитника к линии паса и опасность зоны
+        final double cost = d - (coverNodes[n].dx * 0.12);
+        if (cost < bestNodeCost) {
+          bestNodeCost = cost;
+          bestNodeIdx = n;
+        }
+      }
+
+      // Базовый зональный якорь игрока для сохранения структуры обороны
+      final double baseZonalX = (ballRef.dx + 0.22).clamp(0.42, 0.84);
+      final double baseZonalY = (0.16 + ((j - 1) / math.max(1, _opponentPositions.length - 2)) * 0.68).clamp(0.12, 0.88);
+      final Offset zonalAnchor = Offset(baseZonalX, baseZonalY);
+
+      Offset targetPos = zonalAnchor;
+      if (bestNodeIdx != -1) {
+        assignedNodes.add(bestNodeIdx);
+        final Offset node = coverNodes[bestNodeIdx];
+        // Смешиваем узел перекрытия коридора паса (78%) и зональную компактность (22%)
+        targetPos = Offset(
+          node.dx * 0.78 + zonalAnchor.dx * 0.22,
+          node.dy * 0.78 + zonalAnchor.dy * 0.22,
+        );
+      }
+
+      // Вектор взаимного отталкивания защитников (Boids Separation), чтобы не слипались в одну точку
+      Offset separation = Offset.zero;
+      for (int k = 1; k < _opponentPositions.length; k++) {
+        if (k == j) continue;
+        final double distOther = _metricDistance(cur, _opponentPositions[k]);
+        if (distOther < 0.075 && distOther > 1e-4) {
+          final Offset diff = cur - _opponentPositions[k];
+          separation += (diff / diff.distance) * ((0.075 - distOther) * 0.45);
+        }
+      }
+
+      targetPos = Offset(
+        (targetPos.dx + separation.dx).clamp(0.08, 0.91),
+        (targetPos.dy + separation.dy).clamp(0.07, 0.93),
+      );
+
+      final Offset moveVec = targetPos - cur;
+      if (moveVec.distance > 0.004) {
+        final Offset dir = moveVec / moveVec.distance;
+        final double step = math.min(0.0036, moveVec.distance);
+        _opponentPositions[j] = Offset(
+          (cur.dx + dir.dx * step).clamp(0.08, 0.91),
+          (cur.dy + dir.dy * step).clamp(0.07, 0.93),
+        );
+        _playerHeadings['opp_$j'] = dir;
+        changed = true;
+      }
+    }
+
+    return changed;
+  }
+
+  bool _updateGoalkeepersAI() {
+    if (!_isMatchMode || _isDemoMode) return false;
+    bool changed = false;
+
+    // Не перезаписываем позицию вратаря Синих, если игрок ведет его вручную или он бежит по треку
+    if (_pitchPositions.isNotEmpty && !_runningPlayers.containsKey('own_0')) {
+      final curGk = _pitchPositions[0];
+      final targetY = _ballPosition.dy.clamp(0.435, 0.565);
+      if ((curGk.dy - targetY).abs() > 0.0015) {
+        final newY = curGk.dy + (targetY - curGk.dy) * 0.16;
+        _pitchPositions[0] = Offset(0.075, newY);
+        changed = true;
+      }
+    }
+
+    // Аналогично для вратаря Красных
+    if (_opponentPositions.isNotEmpty && !_runningPlayers.containsKey('opp_0')) {
+      final curGk = _opponentPositions[0];
+      final targetY = _ballPosition.dy.clamp(0.435, 0.565);
+      if ((curGk.dy - targetY).abs() > 0.0015) {
+        final newY = curGk.dy + (targetY - curGk.dy) * 0.16;
+        _opponentPositions[0] = Offset(0.925, newY);
+        changed = true;
+      }
+    }
+
+    return changed;
+  }
+
+  bool _updateTackleContest() {
+    if (!_isMatchMode || _ballPossessorIndex == null) return false;
+
+    final now = DateTime.now();
+    if (now.difference(_lastTackleTime).inMilliseconds < 850) return false;
+
+    final isOpp = _ballPossessorIsOpponent;
+    final carrierIdx = _ballPossessorIndex!;
+    final carrierPositions = isOpp ? _opponentPositions : _pitchPositions;
+    final defenderPositions = isOpp ? _pitchPositions : _opponentPositions;
+
+    if (carrierIdx >= carrierPositions.length) return false;
+    final carrierPos = carrierPositions[carrierIdx];
+    final carrierKey = isOpp ? 'opp_$carrierIdx' : 'own_$carrierIdx';
+    final carrierHeading = _playerHeadings[carrierKey] ?? Offset(isOpp ? -1.0 : 1.0, 0.0);
+
+    for (int j = 0; j < defenderPositions.length; j++) {
+      final defPos = defenderPositions[j];
+      final dist = _metricDistance(carrierPos, defPos);
+
+      if (dist < 0.040) {
+        _lastTackleTime = now;
+        // Векторный анализ угла атаки защитника (встречный отбор спереди эффективнее отбора со спины)
+        final toDefender = defPos - carrierPos;
+        final dot = toDefender.dx * carrierHeading.dx + toDefender.dy * carrierHeading.dy;
+        final double tackleSuccessProb = dot > 0 ? 0.72 : 0.38;
+
+        final roll = math.Random().nextDouble();
+        if (roll < tackleSuccessProb) {
+          HapticFeedback.mediumImpact();
+          if (roll < tackleSuccessProb * 0.68) {
+            _ballPossessorIndex = j;
+            _ballPossessorIsOpponent = !isOpp;
+            final defKey = !isOpp ? 'opp_$j' : 'own_$j';
+            _playerHeadings[defKey] = Offset(!isOpp ? -1.0 : 1.0, 0.0);
+            _ballPosition = _getDribbleBallPosition(defPos, !isOpp);
+            _matchTelemetryText = !isOpp
+                ? 'Чистый отбор Красных (#${j + 1})!'
+                : 'Чистый отбор Синих (#${j + 1})!';
+          } else {
+            final looseDir = Offset(
+              (math.Random().nextDouble() - 0.5) * 0.036,
+              (math.Random().nextDouble() - 0.5) * 0.036,
+            );
+            _ballPossessorIndex = null;
+            _freeBallVelocity = looseDir;
+            _matchTelemetryText = 'Борьба за мяч • Рикошет в свободную зону!';
+          }
+          return true;
+        }
+        break;
+      }
+    }
+    return false;
+  }
+
+  bool _checkBallInterceptionOnFly(Offset prevBallPos, Offset nextBallPos) {
+    if (_ballPossessorIndex != null) return false;
+
+    for (int i = 0; i < _pitchPositions.length; i++) {
+      // Вратарь обрабатывается в _checkGoalOrSave при ударе по его воротам
+      if (_passIgnoreTicks > 0 && !_lastPasserIsOpponent && i == _lastPasserIndex) continue;
+      if (_passIgnoreTicks > 0 && !_lastPasserIsOpponent && i == _lastPasserIndex) continue;
+      if (_passIgnoreTicks > 0 && !_lastPasserIsOpponent && i == _lastPasserIndex) continue;
+      if (i == 0 && _lastShotByOpponent && nextBallPos.dx < 0.14) continue;
+      final p = _pitchPositions[i];
+      final closest = _closestPointOnSegment(p, prevBallPos, nextBallPos);
+      if (_metricDistance(p, closest) < 0.033) {
+        _ballPossessorIndex = i;
+        _ballPossessorIsOpponent = false;
+        _freeBallVelocity = null;
+        _ballPosition = _getDribbleBallPosition(p, false);
+        _matchTelemetryText = 'Перехват / прием мяча: Синие (#${i + 1})';
+        HapticFeedback.selectionClick();
+        return true;
+      }
+    }
+
+    for (int i = 0; i < _opponentPositions.length; i++) {
+      if (_passIgnoreTicks > 0 && _lastPasserIsOpponent && i == _lastPasserIndex) continue;
+      if (_passIgnoreTicks > 0 && _lastPasserIsOpponent && i == _lastPasserIndex) continue;
+      if (_passIgnoreTicks > 0 && _lastPasserIsOpponent && i == _lastPasserIndex) continue;
+      if (i == 0 && !_lastShotByOpponent && nextBallPos.dx > 0.86) continue;
+      final p = _opponentPositions[i];
+      final closest = _closestPointOnSegment(p, prevBallPos, nextBallPos);
+      if (_metricDistance(p, closest) < 0.033) {
+        _ballPossessorIndex = i;
+        _ballPossessorIsOpponent = true;
+        _freeBallVelocity = null;
+        _ballPosition = _getDribbleBallPosition(p, true);
+        _matchTelemetryText = 'Перехват / прием мяча: Красные (#${i + 1})';
+        HapticFeedback.selectionClick();
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  Widget _buildMatchScoreboard() {
+    final minutes = (_matchSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (_matchSeconds % 60).toString().padLeft(2, '0');
+    final totalTicks = (_bluePossessionTicks + _redPossessionTicks).clamp(1, 999999);
+    final bluePossPct = ((_bluePossessionTicks * 100) / totalTicks).round().clamp(1, 99);
+    final redPossPct = 100 - bluePossPct;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E2235), Color(0xFF10131E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFFB800).withValues(alpha: 0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.4),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF1E88E5),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'СИНИЕ',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                      ),
+                      Text(
+                        'xG ${_blueXG.toStringAsFixed(2)} • $bluePossPct%',
+                        style: const TextStyle(color: Colors.white60, fontSize: 9.5, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                ),
+                child: Text(
+                  '$_blueScore : $_redScore',
+                  style: const TextStyle(
+                    color: Color(0xFFFFB800),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 17,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Text(
+                        'КРАСНЫЕ',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                      ),
+                      Text(
+                        '$redPossPct% • xG ${_redXG.toStringAsFixed(2)}',
+                        style: const TextStyle(color: Colors.white60, fontSize: 9.5, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 5),
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE53935),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0C0E17),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '$minutes:$seconds',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  InkWell(
+                    onTap: _toggleMatchTimer,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: _isMatchTimerActive ? const Color(0xFFFFB800) : Colors.white24,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(
+                        _isMatchTimerActive ? Icons.pause : Icons.play_arrow,
+                        size: 15,
+                        color: _isMatchTimerActive ? Colors.black : Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: _resetMatchGame,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white12,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.refresh, size: 15, color: Colors.white70),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          // Полоса владения мячом и живая аналитическая строка (как в Veo / Metrica)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: SizedBox(
+              height: 3,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: bluePossPct,
+                    child: Container(color: const Color(0xFF1E88E5)),
+                  ),
+                  Expanded(
+                    flex: redPossPct,
+                    child: Container(color: const Color(0xFFE53935)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            _matchTelemetryText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFFFFB800),
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Widget> _buildTeamPlayerNodes({
     required BoxConstraints constraints,
     required List<Offset> positions,
@@ -2038,11 +3643,12 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
       final double x = (pos.dx * constraints.maxWidth - (nodeSize / 2)).clamp(4.0, constraints.maxWidth - nodeSize - 4.0);
       final double y = (pos.dy * constraints.maxHeight - (nodeSize / 2)).clamp(4.0, constraints.maxHeight - nodeSize - 4.0);
 
-      final bool isTouching = _activeTouchPlayerIndex == i && _activeTouchIsOpponent == isOpponent;
-      final bool isMoving = _movingPlayerIndex == i && _movingPlayerIsOpponent == isOpponent;
+      final String pKey = _playerKey(i, isOpponent);
+      final bool isTouching = _activeTouchPlayerKeys.contains(pKey);
+      final bool isMoving = _runningPlayers.containsKey(pKey);
       final bool isActive = isTouching || isMoving;
-        final bool isSelected = _selectedPlayerForBall == i && _selectedPlayerForBallIsOpponent == isOpponent;
-        final bool hasBall = _ballPossessorIndex == i && _ballPossessorIsOpponent == isOpponent;
+      final bool isSelected = _selectedPlayerForBall == i && _selectedPlayerForBallIsOpponent == isOpponent;
+      final bool hasBall = _ballPossessorIndex == i && _ballPossessorIsOpponent == isOpponent;
 
       return Positioned(
         left: x,
@@ -2051,92 +3657,86 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
           cursor: SystemMouseCursors.grab,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-              onTap: () {
-                // Если мяч у этой команды и у другого игрока — отдаем пас
-                if (_ballPossessorIndex != null && _ballPossessorIsOpponent == isOpponent) {
-                  if (_ballPossessorIndex != i) {
-                    _passBallToPlayer(i, isOpponent: isOpponent);
-                  }
-                } else {
-                  // Выбираем фишку для бега к мячу
-                  setState(() {
-                    _selectedPlayerForBall = i;
-                    _selectedPlayerForBallIsOpponent = isOpponent;
-                  });
-                  HapticFeedback.selectionClick();
+            onTap: () {
+              if (_ballPossessorIndex != null && _ballPossessorIsOpponent == isOpponent) {
+                if (_ballPossessorIndex != i) {
+                  _passBallToPlayer(i, isOpponent: isOpponent);
                 }
-              },
+              } else {
+                setState(() {
+                  _selectedPlayerForBall = i;
+                  _selectedPlayerForBallIsOpponent = isOpponent;
+                });
+                HapticFeedback.selectionClick();
+              }
+            },
             onPanDown: (_) {
-              if (_moveController.isAnimating) return;
               HapticFeedback.mediumImpact();
               _fadeController.stop();
               setState(() {
-                _activeTouchPlayerIndex = i;
-                _activeTouchIsOpponent = isOpponent;
-                _activePlayerTrail = [positions[i]];
+                _activeTouchPlayerKeys.add(pKey);
+                _playerTrails[pKey] = [positions[i]];
+                _runningPlayers.remove(pKey);
+                _activePlayerTrail = _playerTrails[pKey]!;
               });
               _blinkController.repeat(reverse: true);
             },
             onPanUpdate: (details) {
-              if (_moveController.isAnimating) return;
-              final currentFingerPoint = _activePlayerTrail.isNotEmpty
-                  ? _activePlayerTrail.last
+              final trail = _playerTrails[pKey];
+              final currentPoint = (trail != null && trail.isNotEmpty)
+                  ? trail.last
                   : positions[i];
 
-              final double nextDx = (currentFingerPoint.dx + details.delta.dx / constraints.maxWidth).clamp(0.04, 0.96);
-              final double nextDy = (currentFingerPoint.dy + details.delta.dy / constraints.maxHeight).clamp(0.04, 0.96);
+              final double nextDx = (currentPoint.dx + details.delta.dx / constraints.maxWidth).clamp(0.04, 0.96);
+              final double nextDy = (currentPoint.dy + details.delta.dy / constraints.maxHeight).clamp(0.04, 0.96);
               final nextPos = Offset(nextDx, nextDy);
 
-                // Если игрок ведет мяч — двигаем мяч синхронно за пальцем
-                if (_ballPossessorIndex == i && _ballPossessorIsOpponent == isOpponent) {
-                  _ballPosition = Offset(
-                    (nextPos.dx + 0.024).clamp(0.04, 0.96),
-                    (nextPos.dy + 0.018).clamp(0.04, 0.96),
-                  );
-                }
-                // Если игрока притянули к свободному мячу — захват
-                else if (_showBall && _ballPossessorIndex == null && (nextPos - _ballPosition).distance < 0.045) {
-                  _ballPossessorIndex = i;
-                  _ballPossessorIsOpponent = isOpponent;
-                  _ballPosition = Offset(
-                    (nextPos.dx + 0.024).clamp(0.04, 0.96),
-                    (nextPos.dy + 0.018).clamp(0.04, 0.96),
-                  );
-                  _blinkController.repeat(reverse: true);
-                }
-
-                setState(() {
-                  if (_activePlayerTrail.isEmpty) {
-                  _activePlayerTrail = [positions[i], nextPos];
-                } else {
-                  if ((_activePlayerTrail.last - nextPos).distance > 0.008) {
-                    _activePlayerTrail.add(nextPos);
-                  }
-                }
-              });
-            },
-            onPanEnd: (_) {
-              if (_activePlayerTrail.length < 2) {
-                setState(() {
-                  _activeTouchPlayerIndex = null;
-                  _activePlayerTrail.clear();
-                });
-                _blinkController.stop();
-                return;
+              if (_ballPossessorIndex == i && _ballPossessorIsOpponent == isOpponent) {
+                _ballPosition = _getDribbleBallPosition(nextPos, isOpponent);
+              } else if (_showBall && _ballPossessorIndex == null && (nextPos - _ballPosition).distance < 0.045) {
+                _ballPossessorIndex = i;
+                _ballPossessorIsOpponent = isOpponent;
+                _ballPosition = _getDribbleBallPosition(nextPos, isOpponent);
+                _blinkController.repeat(reverse: true);
               }
 
               setState(() {
-                _movingPlayerIndex = i;
-                _movingPlayerIsOpponent = isOpponent;
+                if (trail == null || trail.isEmpty) {
+                  _playerTrails[pKey] = [positions[i], nextPos];
+                } else {
+                  if ((trail.last - nextPos).distance > 0.008) {
+                    trail.add(nextPos);
+                  }
+                }
+                _activePlayerTrail = _playerTrails[pKey] ?? [];
               });
-              _moveController.forward(from: 0.0);
+            },
+            onPanEnd: (_) {
+              final trail = _playerTrails[pKey];
+              setState(() {
+                _activeTouchPlayerKeys.remove(pKey);
+              });
+
+              if (trail == null || trail.length < 2) {
+                setState(() {
+                  _playerTrails.remove(pKey);
+                });
+                if (_activeTouchPlayerKeys.isEmpty && _runningPlayers.isEmpty && _ballPossessorIndex == null) {
+                  _blinkController.stop();
+                }
+                return;
+              }
+
+              _startPlayerRun(i, isOpponent, List<Offset>.from(trail));
             },
             onPanCancel: () {
               setState(() {
-                _activeTouchPlayerIndex = null;
-                _activePlayerTrail.clear();
+                _activeTouchPlayerKeys.remove(pKey);
+                _playerTrails.remove(pKey);
               });
-              _blinkController.stop();
+              if (_activeTouchPlayerKeys.isEmpty && _runningPlayers.isEmpty && _ballPossessorIndex == null) {
+                _blinkController.stop();
+              }
             },
             child: AnimatedBuilder(
               animation: _blinkAnimation,
@@ -3084,4 +4684,430 @@ class FutsalPitchPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ============================================================================
+// АНАЛИТИЧЕСКИЙ СЛОЙ ПОЛЯ: КОРИДОРЫ ПАСА (xPass %) И ВЫСОТА ЛИНИИ ОБОРОНЫ
+// ============================================================================
+class _TacticalAnalyticsPainter extends CustomPainter {
+  final List<Offset> bluePositions;
+  final List<Offset> redPositions;
+  final Offset ballPosition;
+  final int? ballPossessorIndex;
+  final bool ballPossessorIsOpponent;
+  final bool showBall;
+  final bool showPassingLanes;
+  final bool showPitchControl;
+
+  static const double _aspectY = 0.68;
+
+  _TacticalAnalyticsPainter({
+    required this.bluePositions,
+    required this.redPositions,
+    required this.ballPosition,
+    required this.ballPossessorIndex,
+    required this.ballPossessorIsOpponent,
+    required this.showBall,
+    this.showPassingLanes = true,
+    this.showPitchControl = false,
+  });
+
+  double _metricDist(Offset a, Offset b) {
+    final dx = a.dx - b.dx;
+    final dy = (a.dy - b.dy) * _aspectY;
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (showPitchControl) {
+      _drawPitchControlVoronoi(canvas, size);
+    }
+    if (showPassingLanes) {
+      _drawDefensiveLines(canvas, size);
+      if (showBall) {
+        _drawPassingCorridors(canvas, size);
+      }
+    }
+  }
+
+  // Диаграмма Вороного и логистическая карта контроля территории (Fernandez & Bornn model)
+  void _drawPitchControlVoronoi(Canvas canvas, Size size) {
+    if (bluePositions.isEmpty && redPositions.isEmpty) return;
+
+    const int cols = 28;
+    const int rows = 18;
+    final double cellW = size.width / cols;
+    final double cellH = size.height / rows;
+
+    final List<List<double>> controlGrid = List.generate(
+      rows,
+      (_) => List<double>.filled(cols, 0.5),
+    );
+
+    double blueWeightedSum = 0.0;
+    int totalCells = rows * cols;
+    final Paint cellPaint = Paint()..style = PaintingStyle.fill;
+
+    for (int r = 0; r < rows; r++) {
+      final double normY = (r + 0.5) / rows;
+      for (int c = 0; c < cols; c++) {
+        final double normX = (c + 0.5) / cols;
+        final Offset pt = Offset(normX, normY);
+
+        double minBlue = 99.0;
+        for (final bp in bluePositions) {
+          final d = _metricDist(pt, bp);
+          if (d < minBlue) minBlue = d;
+        }
+
+        double minRed = 99.0;
+        for (final rp in redPositions) {
+          final d = _metricDist(pt, rp);
+          if (d < minRed) minRed = d;
+        }
+
+        // Логистическая функция контроля точки поля
+        final double blueControl = 1.0 / (1.0 + math.exp(18.0 * (minBlue - minRed)));
+        controlGrid[r][c] = blueControl;
+        blueWeightedSum += blueControl;
+
+        final Rect cellRect = Rect.fromLTWH(c * cellW, r * cellH, cellW + 0.6, cellH + 0.6);
+        if (blueControl > 0.53) {
+          final double intensity = ((blueControl - 0.50) * 2.0).clamp(0.0, 1.0);
+          cellPaint.color = const Color(0xFF1E88E5).withValues(alpha: 0.06 + 0.22 * intensity);
+          canvas.drawRect(cellRect, cellPaint);
+        } else if (blueControl < 0.47) {
+          final double intensity = ((0.50 - blueControl) * 2.0).clamp(0.0, 1.0);
+          cellPaint.color = const Color(0xFFE53935).withValues(alpha: 0.06 + 0.22 * intensity);
+          canvas.drawRect(cellRect, cellPaint);
+        }
+      }
+    }
+
+    // Отрисовка границ ячеек Вороного (линий фронта между зонами контроля Синих и Красных)
+    final Paint frontierPaint = Paint()
+      ..color = const Color(0xFFFFD54F).withValues(alpha: 0.65)
+      ..strokeWidth = 1.4
+      ..style = PaintingStyle.stroke;
+
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        final bool isBlueHere = controlGrid[r][c] >= 0.50;
+        if (c + 1 < cols) {
+          final bool isBlueRight = controlGrid[r][c + 1] >= 0.50;
+          if (isBlueHere != isBlueRight) {
+            final double x = (c + 1) * cellW;
+            canvas.drawLine(Offset(x, r * cellH), Offset(x, (r + 1) * cellH), frontierPaint);
+          }
+        }
+        if (r + 1 < rows) {
+          final bool isBlueBottom = controlGrid[r + 1][c] >= 0.50;
+          if (isBlueHere != isBlueBottom) {
+            final double y = (r + 1) * cellH;
+            canvas.drawLine(Offset(c * cellW, y), Offset((c + 1) * cellW, y), frontierPaint);
+          }
+        }
+      }
+    }
+
+    final int blueAreaPct = ((blueWeightedSum / totalCells) * 100).round().clamp(1, 99);
+    final int redAreaPct = 100 - blueAreaPct;
+
+    _drawBadge(
+      canvas,
+      center: Offset(size.width * 0.50, 18),
+      text: 'КОНТРОЛЬ ПОЛЯ: СИНИЕ $blueAreaPct% • $redAreaPct% КРАСНЫЕ',
+      borderColor: const Color(0xFF00B0FF),
+      textColor: Colors.white,
+    );
+  }
+
+  void _drawDefensiveLines(Canvas canvas, Size size) {
+    if (bluePositions.length > 1) {
+      final outfield = bluePositions.sublist(1);
+      outfield.sort((a, b) => a.dx.compareTo(b.dx));
+      final double defLineX = outfield.first.dx.clamp(0.06, 0.90);
+      final double px = defLineX * size.width;
+      final int metersFromGoal = ((defLineX - 0.04) * 105).round().clamp(1, 95);
+
+      if (!showPitchControl) {
+        final zonePaint = Paint()
+          ..shader = LinearGradient(
+            colors: [
+              const Color(0xFF1E88E5).withValues(alpha: 0.15),
+              const Color(0xFF1E88E5).withValues(alpha: 0.02),
+            ],
+          ).createShader(Rect.fromLTWH(0, 0, px, size.height));
+        canvas.drawRect(Rect.fromLTWH(0, 0, px, size.height), zonePaint);
+      }
+
+      final chainCount = math.min(3, outfield.length);
+      final chainPlayers = outfield.sublist(0, chainCount)..sort((a, b) => a.dy.compareTo(b.dy));
+      if (chainPlayers.length >= 2) {
+        final chainPaint = Paint()
+          ..color = const Color(0xFF64B5F6).withValues(alpha: 0.60)
+          ..strokeWidth = 2.0
+          ..style = PaintingStyle.stroke;
+        for (int i = 0; i < chainPlayers.length - 1; i++) {
+          final p1 = Offset(chainPlayers[i].dx * size.width, chainPlayers[i].dy * size.height);
+          final p2 = Offset(chainPlayers[i + 1].dx * size.width, chainPlayers[i + 1].dy * size.height);
+          _drawDashedLine(canvas, p1, p2, chainPaint, dashWidth: 5, dashSpace: 4);
+        }
+      }
+
+      final linePaint = Paint()
+        ..color = const Color(0xFF42A5F5).withValues(alpha: 0.85)
+        ..strokeWidth = 1.6;
+      _drawDashedLine(
+        canvas,
+        Offset(px, 8),
+        Offset(px, size.height - 8),
+        linePaint,
+        dashWidth: 6,
+        dashSpace: 4,
+      );
+
+      _drawBadge(
+        canvas,
+        center: Offset((px + 44).clamp(48.0, size.width - 52.0), 36),
+        text: 'ОБОРОНА СИНИХ: $metersFromGoalм',
+        borderColor: const Color(0xFF42A5F5),
+        textColor: const Color(0xFF90CAF9),
+      );
+    }
+
+    if (redPositions.length > 1) {
+      final outfield = redPositions.sublist(1);
+      outfield.sort((a, b) => b.dx.compareTo(a.dx));
+      final double defLineX = outfield.first.dx.clamp(0.10, 0.94);
+      final double px = defLineX * size.width;
+      final int metersFromGoal = ((0.96 - defLineX) * 105).round().clamp(1, 95);
+
+      if (!showPitchControl) {
+        final zonePaint = Paint()
+          ..shader = LinearGradient(
+            colors: [
+              const Color(0xFFE53935).withValues(alpha: 0.02),
+              const Color(0xFFE53935).withValues(alpha: 0.15),
+            ],
+          ).createShader(Rect.fromLTWH(px, 0, size.width - px, size.height));
+        canvas.drawRect(Rect.fromLTWH(px, 0, size.width - px, size.height), zonePaint);
+      }
+
+      final chainCount = math.min(3, outfield.length);
+      final chainPlayers = outfield.sublist(0, chainCount)..sort((a, b) => a.dy.compareTo(b.dy));
+      if (chainPlayers.length >= 2) {
+        final chainPaint = Paint()
+          ..color = const Color(0xFFEF5350).withValues(alpha: 0.60)
+          ..strokeWidth = 2.0
+          ..style = PaintingStyle.stroke;
+        for (int i = 0; i < chainPlayers.length - 1; i++) {
+          final p1 = Offset(chainPlayers[i].dx * size.width, chainPlayers[i].dy * size.height);
+          final p2 = Offset(chainPlayers[i + 1].dx * size.width, chainPlayers[i + 1].dy * size.height);
+          _drawDashedLine(canvas, p1, p2, chainPaint, dashWidth: 5, dashSpace: 4);
+        }
+      }
+
+      final linePaint = Paint()
+        ..color = const Color(0xFFEF5350).withValues(alpha: 0.85)
+        ..strokeWidth = 1.6;
+      _drawDashedLine(
+        canvas,
+        Offset(px, 8),
+        Offset(px, size.height - 8),
+        linePaint,
+        dashWidth: 6,
+        dashSpace: 4,
+      );
+
+      _drawBadge(
+        canvas,
+        center: Offset((px - 48).clamp(52.0, size.width - 52.0), size.height - 20),
+        text: 'ОБОРОНА КРАСНЫХ: $metersFromGoalм',
+        borderColor: const Color(0xFFEF5350),
+        textColor: const Color(0xFFFFCDD2),
+      );
+    }
+  }
+
+  void _drawPassingCorridors(Canvas canvas, Size size) {
+    int? carrierIdx = ballPossessorIndex;
+    bool isOpp = ballPossessorIsOpponent;
+
+    if (carrierIdx == null) {
+      double bestDist = 0.14;
+      for (int i = 0; i < bluePositions.length; i++) {
+        final d = _metricDist(bluePositions[i], ballPosition);
+        if (d < bestDist) {
+          bestDist = d;
+          carrierIdx = i;
+          isOpp = false;
+        }
+      }
+      for (int i = 0; i < redPositions.length; i++) {
+        final d = _metricDist(redPositions[i], ballPosition);
+        if (d < bestDist) {
+          bestDist = d;
+          carrierIdx = i;
+          isOpp = true;
+        }
+      }
+    }
+
+    if (carrierIdx == null) return;
+    final teammates = isOpp ? redPositions : bluePositions;
+    final opponents = isOpp ? bluePositions : redPositions;
+    if (carrierIdx >= teammates.length) return;
+
+    final Offset p0 = teammates[carrierIdx];
+    final Offset p0Px = Offset(p0.dx * size.width, p0.dy * size.height);
+
+    for (int i = 0; i < teammates.length; i++) {
+      if (i == carrierIdx) continue;
+      final Offset target = teammates[i];
+      final double passDist = _metricDist(p0, target);
+      if (passDist < 0.04) continue;
+
+      final int probPct = _computePassProbability(p0, target, passDist, opponents);
+      final Offset targetPx = Offset(target.dx * size.width, target.dy * size.height);
+
+      final Color laneColor = probPct >= 70
+          ? const Color(0xFF00E676)
+          : (probPct >= 45 ? const Color(0xFFFFB800) : const Color(0xFFFF5252));
+
+      final dir = targetPx - p0Px;
+      final len = dir.distance;
+      if (len < 10) continue;
+      final perp = Offset(-dir.dy / len, dir.dx / len);
+
+      final corridorPath = Path()
+        ..moveTo(p0Px.dx + perp.dx * 3.0, p0Px.dy + perp.dy * 3.0)
+        ..lineTo(targetPx.dx + perp.dx * 11.0, targetPx.dy + perp.dy * 11.0)
+        ..lineTo(targetPx.dx - perp.dx * 11.0, targetPx.dy - perp.dy * 11.0)
+        ..lineTo(p0Px.dx - perp.dx * 3.0, p0Px.dy - perp.dy * 3.0)
+        ..close();
+
+      final conePaint = Paint()
+        ..color = laneColor.withValues(alpha: probPct >= 45 ? 0.14 : 0.07)
+        ..style = PaintingStyle.fill;
+      canvas.drawPath(corridorPath, conePaint);
+
+      final axisPaint = Paint()
+        ..color = laneColor.withValues(alpha: 0.85)
+        ..strokeWidth = probPct >= 70 ? 2.1 : 1.4;
+
+      if (probPct >= 45) {
+        canvas.drawLine(p0Px, targetPx, axisPaint);
+      } else {
+        _drawDashedLine(canvas, p0Px, targetPx, axisPaint, dashWidth: 4, dashSpace: 4);
+      }
+
+      final Offset midPx = Offset(
+        p0Px.dx * 0.45 + targetPx.dx * 0.55,
+        p0Px.dy * 0.45 + targetPx.dy * 0.55,
+      );
+      _drawBadge(
+        canvas,
+        center: midPx,
+        text: '👟 $probPct%',
+        borderColor: laneColor,
+        textColor: Colors.white,
+      );
+    }
+  }
+
+  int _computePassProbability(
+    Offset p0,
+    Offset target,
+    double passDist,
+    List<Offset> opponents,
+  ) {
+    final ab = target - p0;
+    final lenSq = ab.dx * ab.dx + ab.dy * ab.dy;
+    if (lenSq < 1e-6) return 95;
+
+    double minClearanceRatio = 4.0;
+
+    for (final opp in opponents) {
+      final ap = opp - p0;
+      final t = (ap.dx * ab.dx + ap.dy * ab.dy) / lenSq;
+      if (t < 0.05 || t > 1.05) continue;
+
+      final clampedT = t.clamp(0.0, 1.0);
+      final closest = Offset(p0.dx + ab.dx * clampedT, p0.dy + ab.dy * clampedT);
+      final perpDist = _metricDist(opp, closest);
+      final coneRadius = 0.026 + 0.14 * (clampedT * passDist);
+      final ratio = perpDist / coneRadius;
+      if (ratio < minClearanceRatio) {
+        minClearanceRatio = ratio;
+      }
+    }
+
+    final distFactor = math.exp(-0.42 * passDist);
+    final openFactor = 1.0 - math.exp(-1.65 * minClearanceRatio * minClearanceRatio);
+    final rawProb = (distFactor * openFactor * 100.0).round();
+    return rawProb.clamp(5, 98);
+  }
+
+  void _drawDashedLine(
+    Canvas canvas,
+    Offset p1,
+    Offset p2,
+    Paint paint, {
+    double dashWidth = 5,
+    double dashSpace = 4,
+  }) {
+    final delta = p2 - p1;
+    final distance = delta.distance;
+    if (distance < 1) return;
+    final dir = delta / distance;
+    double current = 0;
+    while (current < distance) {
+      final end = math.min(current + dashWidth, distance);
+      canvas.drawLine(p1 + dir * current, p1 + dir * end, paint);
+      current += dashWidth + dashSpace;
+    }
+  }
+
+  void _drawBadge(
+    Canvas canvas, {
+    required Offset center,
+    required String text,
+    required Color borderColor,
+    required Color textColor,
+  }) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.3,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    final rect = Rect.fromCenter(
+      center: center,
+      width: tp.width + 10,
+      height: tp.height + 5,
+    );
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
+
+    final bgPaint = Paint()..color = const Color(0xE60D111A);
+    final borderPaint = Paint()
+      ..color = borderColor.withValues(alpha: 0.85)
+      ..strokeWidth = 1.1
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawRRect(rrect, bgPaint);
+    canvas.drawRRect(rrect, borderPaint);
+    tp.paint(canvas, Offset(center.dx - tp.width / 2, center.dy - tp.height / 2));
+  }
+
+  @override
+  bool shouldRepaint(covariant _TacticalAnalyticsPainter oldDelegate) => true;
 }

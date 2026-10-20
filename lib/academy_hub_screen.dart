@@ -170,6 +170,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
   @override
   void initState() {
     super.initState();
+    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
 
     _moveController = AnimationController(
       vsync: this,
@@ -371,6 +372,7 @@ class _AcademyHubScreenState extends State<AcademyHubScreen> with TickerProvider
   @override
   void dispose() {
     _blinkController.dispose();
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     _moveController.dispose();
     _fadeController.dispose();
     _passController.dispose();
